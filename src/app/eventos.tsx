@@ -1,9 +1,7 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-import DateTimePicker from "@react-native-community/datetimepicker";
-import { 
-  Timestamp, 
-  updateDoc, 
-  doc, 
+import {
+  Timestamp,
+  updateDoc,
+  doc,
   deleteDoc,
   collection,
   query,
@@ -13,28 +11,31 @@ import {
   getDocs,
   startAfter,
   QueryDocumentSnapshot,
-  DocumentData
+  DocumentData,
 } from "@/lib/dbService";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
-} from "react-native";
+  Calendar,
+  CalendarPlus,
+  CheckCircle2,
+  Clock,
+  Coffee,
+  Disc,
+  Edit3,
+  Film,
+  KeyRound,
+  Layers,
+  Loader2,
+  Plus,
+  Popcorn,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { crearEvento } from "../lib/eventos";
 import { buildSalasFromCount, getCineConfig } from "../lib/cineConfig";
 import { CINES_COLLECTION, db } from "../lib/firebaseConfig";
-import { COLORS, THEME } from "../lib/theme";
 import { useAuthUser } from "../lib/useAuthUser";
 import SEOHead from "@/components/SEOHead";
 import {
@@ -63,19 +64,10 @@ type Evento = {
   duracion?: number;
 };
 
-const PAGE = 10;
+const PAGE = 12;
 
 export default function EventosScreen() {
   const { cineId, loading: sessionLoading } = useAuthUser();
-
-  const [blink, setBlink] = useState(true);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setBlink((prev) => !prev);
-    }, 700);
-    return () => clearInterval(interval);
-  }, []);
 
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,9 +75,6 @@ export default function EventosScreen() {
 
   const [salasCount, setSalasCount] = useState(12);
   const [salasLoading, setSalasLoading] = useState(true);
-
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [menuItem, setMenuItem] = useState<Evento | null>(null);
 
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [deleteItem, setDeleteItem] = useState<Evento | null>(null);
@@ -106,9 +95,12 @@ export default function EventosScreen() {
   const SALAS = useMemo(() => buildSalasFromCount(salasCount), [salasCount]);
   const isSalaValida = (s: string) => {
     if (!s) return false;
-    const parts = s.split(',').map(x => x.trim()).filter(Boolean);
+    const parts = s
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
     if (parts.length === 0) return false;
-    return parts.every(part => SALAS.includes(part));
+    return parts.every((part) => SALAS.includes(part));
   };
 
   const abrirConfirmarBorrado = (item: Evento) => {
@@ -121,21 +113,6 @@ export default function EventosScreen() {
     setDeleteItem(null);
   };
 
-  const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0 });
-
-  const abrirMenuItem = (item: Evento, event?: any) => {
-    if (event) {
-      setMenuAnchor({ x: event.pageX, y: event.pageY });
-    }
-    setMenuItem(item);
-    setMenuVisible(true);
-  };
-
-  const cerrarMenuItem = () => {
-    setMenuVisible(false);
-    setMenuItem(null);
-  };
-
   const loadCineConfig = async () => {
     if (!cineId) {
       setSalasLoading(false);
@@ -145,8 +122,7 @@ export default function EventosScreen() {
     try {
       setSalasLoading(true);
       const cfg = await getCineConfig(cineId);
-      const nextCount =
-        cfg?.salasCount && cfg.salasCount > 0 ? cfg.salasCount : 12;
+      const nextCount = cfg?.salasCount && cfg.salasCount > 0 ? cfg.salasCount : 12;
       setSalasCount(nextCount);
     } catch (e) {
       console.error(e);
@@ -195,7 +171,10 @@ export default function EventosScreen() {
           desayuno: !!data.desayuno,
           combo: !!data.combo,
           diaHora,
-          duracion: data.duracion !== undefined && data.duracion !== null ? Number(data.duracion) : undefined,
+          duracion:
+            data.duracion !== undefined && data.duracion !== null
+              ? Number(data.duracion)
+              : undefined,
         } as Evento;
       });
 
@@ -239,7 +218,10 @@ export default function EventosScreen() {
           desayuno: !!data.desayuno,
           combo: !!data.combo,
           diaHora,
-          duracion: data.duracion !== undefined && data.duracion !== null ? Number(data.duracion) : undefined,
+          duracion:
+            data.duracion !== undefined && data.duracion !== null
+              ? Number(data.duracion)
+              : undefined,
         } as Evento;
       });
 
@@ -255,9 +237,7 @@ export default function EventosScreen() {
     if (!deleteItem || !cineId) return;
 
     try {
-      await deleteDoc(
-        doc(db, CINES_COLLECTION, cineId, "eventos", deleteItem.id)
-      );
+      await deleteDoc(doc(db, CINES_COLLECTION, cineId, "eventos", deleteItem.id));
       cerrarConfirmarBorrado();
       await loadFirstPage();
     } catch (e) {
@@ -273,6 +253,7 @@ export default function EventosScreen() {
     loadFirstPage();
   }, [cineId, sessionLoading]);
 
+  // ── Create Event State ──
   const [createVisible, setCreateVisible] = useState(false);
   const [cPelicula, setCPelicula] = useState("");
   const [cSala, setCSala] = useState("");
@@ -283,8 +264,6 @@ export default function EventosScreen() {
   const [cDcp, setCDcp] = useState(false);
   const [cDesayuno, setCDesayuno] = useState(false);
   const [cCombo, setCCombo] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
   const [createError, setCreateError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -336,34 +315,31 @@ export default function EventosScreen() {
     setCFechaHora(merged);
   };
 
-  const guardarNuevoEvento = async () => {
+  const guardarNuevoEvento = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setCreateError("");
 
     if (!cPelicula.trim()) {
-      setCreateError("Falta película.");
+      setCreateError("Ingresá el título de la película o evento.");
       return;
     }
 
     if (!isSalaValida(cSala)) {
-      setCreateError(
-        `Sala inválida. Elegí una sala entre 1 y ${salasCount} o AC.`
-      );
+      setCreateError(`Seleccioná al menos una sala entre 1 y ${salasCount} o AC.`);
       return;
     }
 
-    if (Platform.OS === "web") {
-      if (!parseWebDate(cFechaWeb)) {
-        setCreateError("Fecha inválida. Usá formato YYYY-MM-DD.");
-        return;
-      }
-      if (!parseWebTime(cHoraWeb)) {
-        setCreateError("Hora inválida. Usá formato HH:mm.");
-        return;
-      }
+    if (!parseWebDate(cFechaWeb)) {
+      setCreateError("Fecha inválida. Usá formato YYYY-MM-DD.");
+      return;
+    }
+    if (!parseWebTime(cHoraWeb)) {
+      setCreateError("Hora inválida. Usá formato HH:mm.");
+      return;
     }
 
     if (cDuracion.trim() && isNaN(Number(cDuracion))) {
-      setCreateError("La duración debe ser un número de minutos.");
+      setCreateError("La duración debe ser un número en minutos.");
       return;
     }
 
@@ -390,31 +366,14 @@ export default function EventosScreen() {
 
       cerrarCrear();
       await loadFirstPage();
-    } catch (e: any) {
-      setCreateError(e?.message ?? "No se pudo crear el evento.");
+    } catch (err: any) {
+      setCreateError(err?.message ?? "No se pudo crear el evento.");
     } finally {
       setSaving(false);
     }
   };
 
-  const onChangeFecha = (_: any, date?: Date) => {
-    setShowDatePicker(false);
-    if (date) {
-      const merged = new Date(cFechaHora);
-      merged.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
-      setCFechaHora(merged);
-    }
-  };
-
-  const onChangeHora = (_: any, date?: Date) => {
-    setShowTimePicker(false);
-    if (date) {
-      const merged = new Date(cFechaHora);
-      merged.setHours(date.getHours(), date.getMinutes(), 0, 0);
-      setCFechaHora(merged);
-    }
-  };
-
+  // ── Edit Event State ──
   const [editVisible, setEditVisible] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [editPelicula, setEditPelicula] = useState("");
@@ -426,19 +385,18 @@ export default function EventosScreen() {
   const [editDesayuno, setEditDesayuno] = useState(false);
   const [editCombo, setEditCombo] = useState(false);
   const [editFechaHora, setEditFechaHora] = useState<Date>(todayAt(11));
-  const [showEditDatePicker, setShowEditDatePicker] = useState(false);
-  const [showEditTimePicker, setShowEditTimePicker] = useState(false);
   const [editError, setEditError] = useState("");
 
   const abrirEdicion = (item: Evento) => {
-    const fecha =
-      item.diaHora instanceof Date ? item.diaHora : toDate(item.diaHora);
+    const fecha = item.diaHora instanceof Date ? item.diaHora : toDate(item.diaHora);
 
     setEditId(item.id);
     setEditPelicula(item.pelicula || "");
     const roomStr = String(item.sala ?? "");
     setEditSala(roomStr);
-    setEditDuracion(item.duracion !== undefined && item.duracion !== null ? String(item.duracion) : "");
+    setEditDuracion(
+      item.duracion !== undefined && item.duracion !== null ? String(item.duracion) : ""
+    );
     setEditIsMultiSelect(roomStr.includes(","));
     setEditKdm(!!item.kdm);
     setEditDcp(!!item.dcp);
@@ -484,25 +442,8 @@ export default function EventosScreen() {
     setEditFechaHora(merged);
   };
 
-  const onChangeEditFecha = (_: any, date?: Date) => {
-    setShowEditDatePicker(false);
-    if (date) {
-      const merged = new Date(editFechaHora);
-      merged.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
-      setEditFechaHora(merged);
-    }
-  };
-
-  const onChangeEditHora = (_: any, date?: Date) => {
-    setShowEditTimePicker(false);
-    if (date) {
-      const merged = new Date(editFechaHora);
-      merged.setHours(date.getHours(), date.getMinutes(), 0, 0);
-      setEditFechaHora(merged);
-    }
-  };
-
-  const guardarEdicion = async () => {
+  const guardarEdicion = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!editId || !cineId) return;
 
     setEditError("");
@@ -513,21 +454,17 @@ export default function EventosScreen() {
     }
 
     if (!isSalaValida(editSala)) {
-      setEditError(
-        `Sala inválida. Elegí una sala entre 1 y ${salasCount} o AC.`
-      );
+      setEditError(`Seleccioná al menos una sala entre 1 y ${salasCount} o AC.`);
       return;
     }
 
-    if (Platform.OS === "web") {
-      if (!parseWebDate(editFechaWeb)) {
-        setEditError("Fecha inválida. Usá formato YYYY-MM-DD.");
-        return;
-      }
-      if (!parseWebTime(editHoraWeb)) {
-        setEditError("Hora inválida. Usá formato HH:mm.");
-        return;
-      }
+    if (!parseWebDate(editFechaWeb)) {
+      setEditError("Fecha inválida. Usá formato YYYY-MM-DD.");
+      return;
+    }
+    if (!parseWebTime(editHoraWeb)) {
+      setEditError("Hora inválida. Usá formato HH:mm.");
+      return;
     }
 
     if (editDuracion.trim() && isNaN(Number(editDuracion))) {
@@ -551,35 +488,54 @@ export default function EventosScreen() {
 
       cerrarEdicion();
       await loadFirstPage();
-    } catch (e: any) {
-      setEditError(e?.message ?? "No se pudo actualizar.");
+    } catch (err: any) {
+      setEditError(err?.message ?? "No se pudo actualizar.");
     } finally {
       setSaving(false);
     }
   };
 
-  const renderHeader = () => {
-    return (
-      <View style={styles.announcementCard}>
-        <View style={styles.announcementHeader}>
-          <View style={[styles.announcementBadge, { opacity: blink ? 1 : 0.4 }]}>
-            <Text style={styles.announcementBadgeText}>¡NUEVO!</Text>
-          </View>
-          <Text style={styles.announcementTitle}>Duración de Eventos</Text>
-        </View>
-        <Text style={styles.announcementText}>
-          Ahora podés configurar la duración en minutos de cada evento al crearlo o editarlo. La duración se verá reflejada en la pantalla de programación.
-        </Text>
-      </View>
-    );
+  const toggleSalaSelection = (
+    salaItem: string,
+    currentVal: string,
+    isMulti: boolean,
+    setter: (v: string) => void
+  ) => {
+    if (isMulti) {
+      const currentRooms = currentVal
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+      let newRooms: string[];
+      if (currentRooms.includes(salaItem)) {
+        newRooms = currentRooms.filter((x) => x !== salaItem);
+      } else {
+        newRooms = [...currentRooms, salaItem];
+      }
+      newRooms.sort((a, b) => {
+        if (a === "AC") return 1;
+        if (b === "AC") return -1;
+        const numA = parseInt(a, 10);
+        const numB = parseInt(b, 10);
+        if (isNaN(numA) && isNaN(numB)) return a.localeCompare(b);
+        if (isNaN(numA)) return 1;
+        if (isNaN(numB)) return -1;
+        return numA - numB;
+      });
+      setter(newRooms.join(", "));
+    } else {
+      setter(salaItem);
+    }
   };
 
   if (loading || salasLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Cargando eventos…</Text>
-      </View>
+      <div className="flex min-h-[320px] flex-col items-center justify-center gap-2.5">
+        <Loader2 className="h-6 w-6 animate-spin text-rose-600 dark:text-rose-500" />
+        <span className="text-xs font-medium text-slate-500 dark:text-zinc-400">
+          Cargando agenda de eventos…
+        </span>
+      </div>
     );
   }
 
@@ -590,1187 +546,571 @@ export default function EventosScreen() {
         description="Gestión, programación y seguimiento de eventos corporativos, avant-premieres y funciones especiales en salas de cine."
         pathname="/eventos"
       />
-      <View
-        style={styles.container}
-        {...(Platform.OS === "web" ? ({ role: "main" } as any) : {})}
-        accessibilityRole="none"
-      >
-      <FlatList
-        data={eventos}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        ListHeaderComponent={renderHeader}
-        renderItem={({ item }) => {
-          const d =
-            item.diaHora instanceof Date ? item.diaHora : toDate(item.diaHora);
-          const valid = !isNaN(d.getTime());
-          const dia = DIAS_SEMANA_FULL[d.getDay()];
-          const mes = MESES_ABBR[d.getMonth()];
-          const hora = valid ? horaCorta(d) : "--:--";
 
-          return (
-            <View>
-              <View style={styles.item}>
-                <View style={styles.dateCol}>
-                  <Text style={styles.dateDay}>{dia}</Text>
-                  <Text style={styles.dateNum}>
-                    {valid ? pad2(d.getDate()) : "—"}
-                  </Text>
-                  <Text style={styles.dateMonth}>{mes}</Text>
+      <main className="mx-auto w-full max-w-5xl pb-24 pt-1">
+        {/* Top Header Bar */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-50 text-rose-600 ring-1 ring-rose-200/60 dark:bg-rose-950/40 dark:text-rose-400 dark:ring-rose-900/50">
+              <Calendar className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm font-bold tracking-tight text-slate-900 dark:text-zinc-100">
+                  Agenda de Eventos y Funciones Especiales
+                </h1>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">
+                  {eventos.length} {eventos.length === 1 ? "próximo" : "próximos"}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                Seguimiento en tiempo real de KDMs, copias DCP, catering y asignación de salas
+              </p>
+            </div>
+          </div>
 
-                  <View style={styles.timePill}>
-                    <Text style={styles.timePillText}>{hora}</Text>
-                  </View>
-                </View>
+          <button
+            type="button"
+            onClick={abrirCrear}
+            className="group inline-flex items-center gap-2 rounded-lg bg-rose-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-rose-600/20 hover:bg-rose-700"
+          >
+            <CalendarPlus className="h-3.5 w-3.5 transition-transform duration-150 group-hover:scale-110" />
+            <span>Programar Evento</span>
+          </button>
+        </div>
 
-                <View style={styles.itemLeft}>
-                  <Text style={styles.itemTitle} numberOfLines={2}>
-                    {item.pelicula}
-                  </Text>
+        {/* Subtle Feature Callout */}
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-violet-200/70 bg-violet-50/60 px-3.5 py-2 text-xs text-violet-900 dark:border-violet-900/40 dark:bg-violet-950/25 dark:text-violet-200">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+              <Sparkles className="h-2.5 w-2.5" /> Nuevo
+            </span>
+            <span className="font-medium">
+              Podés indicar la <strong>duración en minutos</strong> al crear o editar cada evento para reflejarla automáticamente en la grilla de programación.
+            </span>
+          </div>
+        </div>
 
-                  {item.duracion ? (
-                    <View style={styles.durationRow}>
-                      <Text style={styles.durationText}>
-                        ⏱️ Duración: {item.duracion} min
-                      </Text>
-                      <View style={styles.newBadge}>
-                        <Text style={styles.newBadgeText}>¡NUEVO!</Text>
-                      </View>
-                    </View>
-                  ) : null}
+        {/* Events List */}
+        {eventos.length === 0 ? (
+          <div className="animate-card-in flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/60 px-6 py-14 text-center dark:border-zinc-800 dark:bg-zinc-900/40">
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-zinc-800 dark:text-zinc-500">
+              <Calendar className="h-5 w-5" />
+            </div>
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
+              Sin eventos programados
+            </h3>
+            <p className="mt-1 max-w-xs text-xs text-slate-500 dark:text-zinc-400">
+              No hay funciones privadas, avant-premieres ni eventos activos cargados para los próximos días.
+            </p>
+            <button
+              type="button"
+              onClick={abrirCrear}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Crear primer evento</span>
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {eventos.map((item, index) => {
+              const d = item.diaHora instanceof Date ? item.diaHora : toDate(item.diaHora);
+              const valid = !isNaN(d.getTime());
+              const dia = DIAS_SEMANA_FULL[d.getDay()];
+              const mes = MESES_ABBR[d.getMonth()];
+              const hora = valid ? horaCorta(d) : "--:--";
+              const salasArr = String(item.sala || "")
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean);
 
-                  <View style={styles.statusWrap}>
-                    {item.kdm ? (
-                      <Text style={styles.okText}>KDM OK</Text>
-                    ) : (
-                      <Text style={styles.waitText}>Esperando KDM</Text>
-                    )}
-
-                    {item.dcp ? (
-                      <Text style={styles.okText}>DCP OK</Text>
-                    ) : (
-                      <Text style={styles.waitText}>Esperando DCP</Text>
-                    )}
-
-                    {item.desayuno ? (
-                      <Text style={styles.okText}>Lleva desayuno</Text>
-                    ) : (
-                      <Text style={styles.waitText}>No lleva desayuno</Text>
-                    )}
-
-                    {item.combo ? (
-                      <Text style={styles.okText}>Lleva combo</Text>
-                    ) : (
-                      <Text style={styles.waitText}>No lleva combo</Text>
-                    )}
-                  </View>
-                </View>
-
-                <View style={styles.salaRight}>
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      abrirMenuItem(item, e.nativeEvent);
-                    }}
-                    style={styles.moreBtn}
-                  >
-                    <Text style={styles.moreBtnText}>⋮</Text>
-                  </Pressable>
-
-                  {(() => {
-                    const salasArr = String(item.sala || "")
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean);
-                    
-                    if (salasArr.length > 1) {
-                      return (
-                        <>
-                          <Text style={styles.salaLabel}>SALAS</Text>
-                          <View style={styles.salasMultiContainer}>
-                            {salasArr.map((sala, idx) => (
-                              <View key={idx} style={styles.salaBadgeCompact}>
-                                <Text style={styles.salaBadgeCompactText}>{sala}</Text>
-                              </View>
-                            ))}
-                          </View>
-                        </>
-                      );
-                    } else {
-                      return (
-                        <>
-                          <Text style={styles.salaLabel}>SALA</Text>
-                          <Text style={styles.salaNumber}>{item.sala || "—"}</Text>
-                        </>
-                      );
-                    }
-                  })()}
-                </View>
-              </View>
-            </View>
-          );
-        }}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No hay eventos esta semana.</Text>
-          </View>
-        }
-        ListFooterComponent={
-          hasMore ? (
-            <View style={styles.footerLoadMore}>
-              <TouchableOpacity
-                style={styles.loadMoreBtn}
-                onPress={loadMore}
-                activeOpacity={0.9}
-              >
-                <Text style={styles.loadMoreText}>Cargar más</Text>
-              </TouchableOpacity>
-            </View>
-          ) : null
-        }
-      />
-
-      <TouchableOpacity
-        style={styles.fabBR}
-        activeOpacity={0.9}
-        onPress={abrirCrear}
-      >
-        <MaterialCommunityIcons name="plus" size={30} color="#fff" />
-      </TouchableOpacity>
-
-      <Modal
-        visible={deleteVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={cerrarConfirmarBorrado}
-      >
-        <View style={styles.modalBackdropCenter}>
-          <View style={styles.confirmCard}>
-            <Text style={styles.modalTitle}>Eliminar evento</Text>
-
-            <Text style={styles.confirmText}>
-              {deleteItem
-                ? `¿Querés borrar "${deleteItem.pelicula}" (Sala ${deleteItem.sala})?`
-                : "¿Querés borrar este evento?"}
-            </Text>
-
-            <View style={styles.modalActionsRow}>
-              <TouchableOpacity
-                style={[styles.btnGhost, { flex: 1 }]}
-                onPress={cerrarConfirmarBorrado}
-              >
-                <Text style={styles.btnGhostText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.btnDanger, { flex: 1 }]}
-                onPress={ejecutarBorrado}
-              >
-                <Text style={styles.btnPrimaryText}>Borrar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={menuVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={cerrarMenuItem}
-      >
-        <TouchableWithoutFeedback onPress={cerrarMenuItem}>
-          <View style={[styles.menuBackdrop, { justifyContent: 'flex-start', alignItems: 'flex-start' }]}>
-            <TouchableWithoutFeedback>
-              <View style={[styles.menuCard, { position: 'absolute', top: menuAnchor.y > 10 ? menuAnchor.y : 100, left: menuAnchor.x - 200 > 10 ? menuAnchor.x - 200 : 20 }]}>
-                <Pressable
-                  style={styles.menuAction}
-                  onPress={() => {
-                    const item = menuItem;
-                    cerrarMenuItem();
-                    if (item) abrirEdicion(item);
-                  }}
+              return (
+                <div
+                  key={item.id}
+                  style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
+                  className="animate-card-in hover-lift group relative flex flex-col justify-between gap-3 rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-sm transition-colors hover:border-slate-300 dark:border-zinc-800/90 dark:bg-zinc-900 dark:hover:border-zinc-700 sm:flex-row sm:items-center"
                 >
-                  <Text style={styles.menuActionText}>✏️ Editar</Text>
-                </Pressable>
+                  {/* Left: Date Ticket + Main Info */}
+                  <div className="flex min-w-0 flex-1 items-center gap-3.5">
+                    {/* Architectural Date Ticket */}
+                    <div className="flex w-16 shrink-0 flex-col items-center justify-center rounded-xl border border-slate-200/80 bg-slate-50/90 py-2 text-center dark:border-zinc-800 dark:bg-zinc-950">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
+                        {dia?.slice(0, 3)}
+                      </span>
+                      <span className="my-0.5 text-xl font-extrabold leading-none tracking-tight text-slate-900 dark:text-zinc-100">
+                        {valid ? pad2(d.getDate()) : "—"}
+                      </span>
+                      <span className="text-[10px] font-semibold uppercase text-slate-500 dark:text-zinc-400">
+                        {mes}
+                      </span>
+                      <span className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-rose-600 px-1.5 py-0.5 font-mono text-[10px] font-bold text-white">
+                        {hora}
+                      </span>
+                    </div>
 
-                <View style={styles.menuDivider} />
+                    {/* Title + Badges */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="truncate text-sm font-bold text-slate-900 dark:text-zinc-100">
+                          {item.pelicula}
+                        </h3>
+                        {item.duracion ? (
+                          <span className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:border-violet-900/50 dark:bg-violet-950/40 dark:text-violet-300">
+                            <Clock className="h-2.5 w-2.5" />
+                            {item.duracion} min
+                          </span>
+                        ) : null}
+                      </div>
 
-                <Pressable
-                  style={styles.menuAction}
-                  onPress={() => {
-                    const item = menuItem;
-                    cerrarMenuItem();
-                    if (item) abrirConfirmarBorrado(item);
-                  }}
+                      {/* 4-Pill Status Matrix */}
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                        {/* KDM */}
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
+                            item.kdm
+                              ? "border-emerald-200 bg-emerald-50/80 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300"
+                              : "border-amber-200 bg-amber-50/80 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300"
+                          }`}
+                        >
+                          <KeyRound className="h-3 w-3" />
+                          {item.kdm ? "KDM OK" : "Pendiente KDM"}
+                        </span>
+
+                        {/* DCP */}
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
+                            item.dcp
+                              ? "border-emerald-200 bg-emerald-50/80 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300"
+                              : "border-amber-200 bg-amber-50/80 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300"
+                          }`}
+                        >
+                          <Disc className="h-3 w-3" />
+                          {item.dcp ? "DCP OK" : "Pendiente DCP"}
+                        </span>
+
+                        {/* Desayuno */}
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                            item.desayuno
+                              ? "border-sky-200 bg-sky-50/80 text-sky-700 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-300"
+                              : "border-slate-200/80 bg-slate-50 text-slate-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-500"
+                          }`}
+                        >
+                          <Coffee className="h-3 w-3" />
+                          {item.desayuno ? "Con desayuno" : "Sin desayuno"}
+                        </span>
+
+                        {/* Combo */}
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                            item.combo
+                              ? "border-sky-200 bg-sky-50/80 text-sky-700 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-300"
+                              : "border-slate-200/80 bg-slate-50 text-slate-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-500"
+                          }`}
+                        >
+                          <Popcorn className="h-3 w-3" />
+                          {item.combo ? "Con combo" : "Sin combo"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right: Room Badge + Quick Actions */}
+                  <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5 dark:border-zinc-800/80 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                    <div className="flex flex-col items-start sm:items-center">
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">
+                        {salasArr.length > 1 ? "SALAS" : "SALA"}
+                      </span>
+                      {salasArr.length > 1 ? (
+                        <div className="mt-1 flex max-w-[110px] flex-wrap justify-center gap-1">
+                          {salasArr.map((s, idx) => (
+                            <span
+                              key={idx}
+                              className="rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 font-mono text-xs font-extrabold text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/50 dark:text-rose-300"
+                            >
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="font-mono text-2xl font-black leading-none text-rose-600 dark:text-rose-400">
+                          {item.sala || "—"}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => abrirEdicion(item)}
+                        title="Editar evento"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => abrirConfirmarBorrado(item)}
+                        title="Eliminar evento"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-slate-50 text-slate-500 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:border-rose-900/50 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {hasMore && (
+              <div className="pt-3 text-center">
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
-                  <Text style={styles.menuDeleteText}>🗑️ Borrar</Text>
-                </Pressable>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      <Modal
-        visible={createVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={cerrarCrear}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nuevo evento</Text>
-
-             <Text style={styles.label}>Película</Text>
-            <TextInput
-              value={cPelicula}
-              onChangeText={setCPelicula}
-              placeholder="Ej: Batman"
-              placeholderTextColor={COLORS.muted}
-              style={styles.input}
-            />
-
-            <Text style={styles.label}>Duración (minutos, opcional)</Text>
-            <TextInput
-              value={cDuracion}
-              onChangeText={setCDuracion}
-              placeholder="Ej: 75"
-              placeholderTextColor={COLORS.muted}
-              keyboardType="numeric"
-              style={styles.input}
-            />
-
-            <View style={styles.labelRow}>
-              <Text style={styles.labelNoMargin}>Sala (1–{salasCount} o AC)</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  const newMode = !cIsMultiSelect;
-                  setCIsMultiSelect(newMode);
-                  if (!newMode) {
-                    const rooms = cSala.split(',').map(x => x.trim()).filter(Boolean);
-                    setCSala(rooms[0] || "");
-                  }
-                }}
-                style={styles.labelBtn}
-              >
-                <Text style={styles.labelBtnText}>
-                  {cIsMultiSelect ? "Seleccionar una sola sala" : "Seleccionar varias salas"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.salasWrap}>
-              {SALAS.map((s) => {
-                const selected = cIsMultiSelect
-                  ? cSala.split(',').map(x => x.trim()).includes(s)
-                  : s === cSala;
-                
-                const handlePress = () => {
-                  if (cIsMultiSelect) {
-                    const currentRooms = cSala.split(',').map(x => x.trim()).filter(Boolean);
-                    let newRooms;
-                    if (currentRooms.includes(s)) {
-                      newRooms = currentRooms.filter(x => x !== s);
-                    } else {
-                      newRooms = [...currentRooms, s];
-                    }
-                    newRooms.sort((a, b) => {
-                      if (a === "AC") return 1;
-                      if (b === "AC") return -1;
-                      const numA = parseInt(a, 10);
-                      const numB = parseInt(b, 10);
-                      if (isNaN(numA) && isNaN(numB)) return a.localeCompare(b);
-                      if (isNaN(numA)) return 1;
-                      if (isNaN(numB)) return -1;
-                      return numA - numB;
-                    });
-                    setCSala(newRooms.join(", "));
-                  } else {
-                    setCSala(s);
-                  }
-                };
-
-                return (
-                  <TouchableOpacity
-                    key={s}
-                    style={[styles.salaChip, selected && styles.salaChipSelected]}
-                    onPress={handlePress}
-                  >
-                    <Text
-                      style={[
-                        styles.salaChipText,
-                        selected && styles.salaChipTextSelected,
-                      ]}
-                    >
-                      Sala {s}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text style={styles.label}>Fecha y hora</Text>
-
-            {Platform.OS === "web" ? (
-              <View style={styles.webDateRow}>
-                <View style={{ flex: 1 }}>
-                  <TextInput
-                    value={cFechaWeb}
-                    onChangeText={onChangeFechaWeb}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={COLORS.muted}
-                    style={styles.input}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </View>
-
-                <View style={{ width: 120 }}>
-                  <TextInput
-                    value={cHoraWeb}
-                    onChangeText={onChangeHoraWeb}
-                    placeholder="HH:mm"
-                    placeholderTextColor={COLORS.muted}
-                    style={styles.input}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </View>
-              </View>
-            ) : (
-              <>
-                <View style={styles.webDateRow}>
-                  <TouchableOpacity
-                    style={styles.btnGhost}
-                    onPress={() => setShowDatePicker(true)}
-                  >
-                    <Text style={styles.btnGhostText}>
-                      {cFechaHora.toLocaleDateString()}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.btnGhost}
-                    onPress={() => setShowTimePicker(true)}
-                  >
-                    <Text style={styles.btnGhostText}>
-                      {horaCorta(cFechaHora)}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {showDatePicker && (
-                  <DateTimePicker
-                    value={cFechaHora}
-                    mode="date"
-                    display={Platform.OS === "ios" ? "spinner" : "default"}
-                    onChange={onChangeFecha}
-                  />
-                )}
-
-                {showTimePicker && (
-                  <DateTimePicker
-                    value={cFechaHora}
-                    mode="time"
-                    is24Hour
-                    display={Platform.OS === "ios" ? "spinner" : "default"}
-                    onChange={onChangeHora}
-                  />
-                )}
-              </>
+                  <span>Cargar más eventos</span>
+                </button>
+              </div>
             )}
+          </div>
+        )}
 
-            <View style={styles.switchRow}>
-              <Switch value={cKdm} onValueChange={setCKdm} />
-              <Text style={styles.switchLabel}>Tenemos el KDM</Text>
-            </View>
+        {/* Modern Floating Quick-Action Pill */}
+        <button
+          type="button"
+          onClick={abrirCrear}
+          className="fixed bottom-6 right-6 z-30 inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-slate-900/25 ring-1 ring-white/10 hover:bg-rose-600 dark:bg-rose-600 dark:hover:bg-rose-500"
+        >
+          <Plus className="h-4 w-4" />
+          <span>Nuevo Evento</span>
+        </button>
 
-            <View style={styles.switchRow}>
-              <Switch value={cDcp} onValueChange={setCDcp} />
-              <Text style={styles.switchLabel}>Tenemos el DCP</Text>
-            </View>
+        {/* ── DELETE CONFIRM MODAL ── */}
+        {deleteVisible && (
+          <div className="animate-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-xs">
+            <div className="animate-modal-in w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">
+                Eliminar evento
+              </h3>
+              <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-zinc-400">
+                {deleteItem
+                  ? `¿Confirmás que querés eliminar "${deleteItem.pelicula}" (Sala ${deleteItem.sala})? Esta acción no se puede deshacer.`
+                  : "¿Querés eliminar este evento?"}
+              </p>
 
-            <View style={styles.switchRow}>
-              <Switch value={cDesayuno} onValueChange={setCDesayuno} />
-              <Text style={styles.switchLabel}>Lleva desayuno</Text>
-            </View>
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={cerrarConfirmarBorrado}
+                  className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={ejecutarBorrado}
+                  className="rounded-lg bg-rose-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-rose-700"
+                >
+                  Sí, eliminar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-            <View style={styles.switchRow}>
-              <Switch value={cCombo} onValueChange={setCCombo} />
-              <Text style={styles.switchLabel}>Lleva combo</Text>
-            </View>
+        {/* ── CREATE / EDIT MODAL ── */}
+        {(createVisible || editVisible) && (
+          <div className="animate-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-xs">
+            <div className="animate-modal-in flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5 dark:border-zinc-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400">
+                    <Film className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100">
+                      {createVisible ? "Programar Nuevo Evento" : "Editar Evento"}
+                    </h2>
+                    <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                      Configurá sala, horario, duración y requerimientos técnicos
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={createVisible ? cerrarCrear : cerrarEdicion}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
 
-            {createError ? <Text style={styles.errorText}>{createError}</Text> : null}
-
-            <View style={styles.modalActionsRow}>
-              <TouchableOpacity
-                style={[styles.btnGhost, saving && styles.btnGhostDisabled, { flex: 1 }]}
-                onPress={cerrarCrear}
-                disabled={saving}
+              {/* Modal Body */}
+              <form
+                onSubmit={createVisible ? guardarNuevoEvento : guardarEdicion}
+                className="flex-1 space-y-4 overflow-y-auto p-5"
               >
-                <Text style={styles.btnGhostText}>Cancelar</Text>
-              </TouchableOpacity>
+                {/* Title + Duration Row */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                      Película o Evento *
+                    </label>
+                    <input
+                      type="text"
+                      value={createVisible ? cPelicula : editPelicula}
+                      onChange={(e) =>
+                        createVisible
+                          ? setCPelicula(e.target.value)
+                          : setEditPelicula(e.target.value)
+                      }
+                      placeholder="Ej: Avant Premiere Batman / Evento Corp."
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                    />
+                  </div>
 
-              <TouchableOpacity
-                style={[styles.btnPrimary, saving && styles.btnDisabled, { flex: 1, minWidth: 100 }]}
-                onPress={guardarNuevoEvento}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.btnPrimaryText}>Crear</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                      Duración (min)
+                    </label>
+                    <input
+                      type="number"
+                      value={createVisible ? cDuracion : editDuracion}
+                      onChange={(e) =>
+                        createVisible
+                          ? setCDuracion(e.target.value)
+                          : setEditDuracion(e.target.value)
+                      }
+                      placeholder="Ej: 120"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                    />
+                  </div>
+                </div>
 
-      <Modal
-        visible={editVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={cerrarEdicion}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Editar evento</Text>
+                {/* Date & Time Row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                      Fecha de Función *
+                    </label>
+                    <input
+                      type="date"
+                      value={createVisible ? cFechaWeb : editFechaWeb}
+                      onChange={(e) =>
+                        createVisible
+                          ? onChangeFechaWeb(e.target.value)
+                          : onChangeEditFechaWeb(e.target.value)
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-900 focus:bg-white dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                      Horario (24h) *
+                    </label>
+                    <input
+                      type="time"
+                      value={createVisible ? cHoraWeb : editHoraWeb}
+                      onChange={(e) =>
+                        createVisible
+                          ? onChangeHoraWeb(e.target.value)
+                          : onChangeEditHoraWeb(e.target.value)
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-900 focus:bg-white dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                    />
+                  </div>
+                </div>
 
-            <Text style={styles.label}>Película / Título *</Text>
-            <TextInput
-              value={editPelicula}
-              onChangeText={setEditPelicula}
-              placeholder="Ej: Batman o Evento Corporativo"
-              placeholderTextColor={COLORS.muted}
-              style={styles.input}
-            />
-
-            <Text style={styles.label}>Duración (minutos, opcional)</Text>
-            <TextInput
-              value={editDuracion}
-              onChangeText={setEditDuracion}
-              placeholder="Ej: 75"
-              placeholderTextColor={COLORS.muted}
-              keyboardType="numeric"
-              style={styles.input}
-            />
-
-            <View style={styles.labelRow}>
-              <Text style={styles.labelNoMargin}>Sala (1–{salasCount} o AC)</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  const newMode = !editIsMultiSelect;
-                  setEditIsMultiSelect(newMode);
-                  if (!newMode) {
-                    const rooms = editSala.split(',').map(x => x.trim()).filter(Boolean);
-                    setEditSala(rooms[0] || "");
-                  }
-                }}
-                style={styles.labelBtn}
-              >
-                <Text style={styles.labelBtnText}>
-                  {editIsMultiSelect ? "Seleccionar una sola sala" : "Seleccionar varias salas"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.salasWrap}>
-              {SALAS.map((s) => {
-                const selected = editIsMultiSelect
-                  ? editSala.split(',').map(x => x.trim()).includes(s)
-                  : s === editSala;
-
-                const handlePress = () => {
-                  if (editIsMultiSelect) {
-                    const currentRooms = editSala.split(',').map(x => x.trim()).filter(Boolean);
-                    let newRooms;
-                    if (currentRooms.includes(s)) {
-                      newRooms = currentRooms.filter(x => x !== s);
-                    } else {
-                      newRooms = [...currentRooms, s];
-                    }
-                    newRooms.sort((a, b) => {
-                      if (a === "AC") return 1;
-                      if (b === "AC") return -1;
-                      const numA = parseInt(a, 10);
-                      const numB = parseInt(b, 10);
-                      if (isNaN(numA) && isNaN(numB)) return a.localeCompare(b);
-                      if (isNaN(numA)) return 1;
-                      if (isNaN(numB)) return -1;
-                      return numA - numB;
-                    });
-                    setEditSala(newRooms.join(", "));
-                  } else {
-                    setEditSala(s);
-                  }
-                };
-
-                return (
-                  <TouchableOpacity
-                    key={s}
-                    style={[styles.salaChip, selected && styles.salaChipSelected]}
-                    onPress={handlePress}
-                  >
-                    <Text
-                      style={[
-                        styles.salaChipText,
-                        selected && styles.salaChipTextSelected,
-                      ]}
+                {/* Room Selector */}
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                      Asignación de Sala (1–{salasCount} o AC) *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (createVisible) {
+                          const next = !cIsMultiSelect;
+                          setCIsMultiSelect(next);
+                          if (!next) {
+                            const first = cSala
+                              .split(",")
+                              .map((x) => x.trim())
+                              .filter(Boolean)[0];
+                            setCSala(first || "");
+                          }
+                        } else {
+                          const next = !editIsMultiSelect;
+                          setEditIsMultiSelect(next);
+                          if (!next) {
+                            const first = editSala
+                              .split(",")
+                              .map((x) => x.trim())
+                              .filter(Boolean)[0];
+                            setEditSala(first || "");
+                          }
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-rose-400"
                     >
-                      Sala {s}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+                      <Layers className="h-3 w-3" />
+                      <span>
+                        {(createVisible ? cIsMultiSelect : editIsMultiSelect)
+                          ? "Modo sala única"
+                          : "Seleccionar varias salas"}
+                      </span>
+                    </button>
+                  </div>
 
-            <Text style={styles.label}>Fecha y hora</Text>
+                  <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-7">
+                    {SALAS.map((s) => {
+                      const currentVal = createVisible ? cSala : editSala;
+                      const isMulti = createVisible ? cIsMultiSelect : editIsMultiSelect;
+                      const selected = isMulti
+                        ? currentVal
+                            .split(",")
+                            .map((x) => x.trim())
+                            .includes(s)
+                        : s === currentVal;
 
-            {Platform.OS === "web" ? (
-              <View style={styles.webDateRow}>
-                <View style={{ flex: 1 }}>
-                  <TextInput
-                    value={editFechaWeb}
-                    onChangeText={onChangeEditFechaWeb}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={COLORS.muted}
-                    style={styles.input}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </View>
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() =>
+                            toggleSalaSelection(
+                              s,
+                              currentVal,
+                              isMulti,
+                              createVisible ? setCSala : setEditSala
+                            )
+                          }
+                          className={`flex h-8 items-center justify-center rounded-lg border text-xs font-bold transition-all ${
+                            selected
+                              ? "border-rose-600 bg-rose-600 text-white shadow-xs"
+                              : "border-slate-200 bg-slate-50/70 text-slate-600 hover:border-slate-300 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                          }`}
+                        >
+                          {s === "AC" ? "AC" : `S${s}`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-                <View style={{ width: 120 }}>
-                  <TextInput
-                    value={editHoraWeb}
-                    onChangeText={onChangeEditHoraWeb}
-                    placeholder="HH:mm"
-                    placeholderTextColor={COLORS.muted}
-                    style={styles.input}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </View>
-              </View>
-            ) : (
-              <>
-                <View style={styles.webDateRow}>
-                  <TouchableOpacity
-                    style={styles.btnGhost}
-                    onPress={() => setShowEditDatePicker(true)}
+                {/* 2x2 Interactive Requirements Matrix */}
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                    Checklist Técnico y Catering
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      {
+                        label: "Tenemos KDM",
+                        sub: "Llave activa",
+                        icon: KeyRound,
+                        checked: createVisible ? cKdm : editKdm,
+                        onChange: createVisible ? setCKdm : setEditKdm,
+                      },
+                      {
+                        label: "Tenemos DCP",
+                        sub: "Copia en ingesta",
+                        icon: Disc,
+                        checked: createVisible ? cDcp : editDcp,
+                        onChange: createVisible ? setCDcp : setEditDcp,
+                      },
+                      {
+                        label: "Lleva Desayuno",
+                        sub: "Servicio catering",
+                        icon: Coffee,
+                        checked: createVisible ? cDesayuno : editDesayuno,
+                        onChange: createVisible ? setCDesayuno : setEditDesayuno,
+                      },
+                      {
+                        label: "Lleva Combo",
+                        sub: "Candy bar",
+                        icon: Popcorn,
+                        checked: createVisible ? cCombo : editCombo,
+                        onChange: createVisible ? setCCombo : setEditCombo,
+                      },
+                    ].map((opt) => {
+                      const Icon = opt.icon;
+                      return (
+                        <button
+                          key={opt.label}
+                          type="button"
+                          onClick={() => opt.onChange(!opt.checked)}
+                          className={`flex items-center justify-between rounded-xl border p-2.5 text-left transition-all ${
+                            opt.checked
+                              ? "border-emerald-500/70 bg-emerald-50/60 text-emerald-900 dark:border-emerald-600/60 dark:bg-emerald-950/30 dark:text-emerald-200"
+                              : "border-slate-200 bg-slate-50/50 text-slate-600 hover:bg-slate-100/70 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className={`flex h-7 w-7 items-center justify-center rounded-lg ${
+                                opt.checked
+                                  ? "bg-emerald-600 text-white"
+                                  : "bg-slate-200/70 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400"
+                              }`}
+                            >
+                              <Icon className="h-3.5 w-3.5" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold leading-tight">{opt.label}</div>
+                              <div className="text-[10px] opacity-75">{opt.sub}</div>
+                            </div>
+                          </div>
+                          <CheckCircle2
+                            className={`h-4 w-4 transition-transform ${
+                              opt.checked
+                                ? "scale-100 text-emerald-600 dark:text-emerald-400"
+                                : "scale-90 opacity-25"
+                            }`}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {(createVisible ? createError : editError) && (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-400">
+                    {createVisible ? createError : editError}
+                  </div>
+                )}
+
+                {/* Modal Footer */}
+                <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3.5 dark:border-zinc-800">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={createVisible ? cerrarCrear : cerrarEdicion}
+                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
                   >
-                    <Text style={styles.btnGhostText}>
-                      {editFechaHora.toLocaleDateString()}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.btnGhost}
-                    onPress={() => setShowEditTimePicker(true)}
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50"
                   >
-                    <Text style={styles.btnGhostText}>
-                      {horaCorta(editFechaHora)}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {showEditDatePicker && (
-                  <DateTimePicker
-                    value={editFechaHora}
-                    mode="date"
-                    display={Platform.OS === "ios" ? "spinner" : "default"}
-                    onChange={onChangeEditFecha}
-                  />
-                )}
-
-                {showEditTimePicker && (
-                  <DateTimePicker
-                    value={editFechaHora}
-                    mode="time"
-                    is24Hour
-                    display={Platform.OS === "ios" ? "spinner" : "default"}
-                    onChange={onChangeEditHora}
-                  />
-                )}
-              </>
-            )}
-
-            <View style={styles.switchRow}>
-              <Switch value={editKdm} onValueChange={setEditKdm} />
-              <Text style={styles.switchLabel}>Tiene KDM</Text>
-            </View>
-
-            <View style={styles.switchRow}>
-              <Switch value={editDcp} onValueChange={setEditDcp} />
-              <Text style={styles.switchLabel}>Tiene DCP</Text>
-            </View>
-
-            <View style={styles.switchRow}>
-              <Switch value={editDesayuno} onValueChange={setEditDesayuno} />
-              <Text style={styles.switchLabel}>Lleva desayuno</Text>
-            </View>
-
-            <View style={styles.switchRow}>
-              <Switch value={editCombo} onValueChange={setEditCombo} />
-              <Text style={styles.switchLabel}>Lleva combo</Text>
-            </View>
-
-            {editError ? <Text style={styles.errorText}>{editError}</Text> : null}
-
-            <View style={styles.modalActionsRow}>
-              <TouchableOpacity
-                style={[styles.btnGhost, saving && styles.btnGhostDisabled, { flex: 1 }]}
-                onPress={cerrarEdicion}
-                disabled={saving}
-              >
-                <Text style={styles.btnGhostText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.btnPrimary, saving && styles.btnDisabled, { flex: 1, minWidth: 100 }]}
-                onPress={guardarEdicion}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.btnPrimaryText}>Guardar</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-      </View>
+                    {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    <span>{createVisible ? "Crear Evento" : "Guardar Cambios"}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </main>
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "transparent" },
-
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
-  },
-
-  loadingText: {
-    color: COLORS.muted,
-    marginTop: 8,
-  },
-
-  listContent: {
-    gap: 8,
-    padding: 14,
-    paddingBottom: 120,
-  },
-
-  item: {
-    backgroundColor: COLORS.card,
-    borderRadius: THEME.radius.md,
-    padding: THEME.spacing.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexDirection: "row",
-    alignItems: "stretch",
-    gap: THEME.spacing.md,
-    minHeight: 96,
-  },
-
-  dateCol: {
-    width: 92,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: THEME.spacing.xs,
-    paddingHorizontal: THEME.spacing.sm,
-    borderRightWidth: 1,
-    borderRightColor: COLORS.border,
-  },
-
-  dateDay: {
-    color: COLORS.muted,
-    fontSize: THEME.fontSize.xs,
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
-
-  dateNum: {
-    fontSize: 28,
-    lineHeight: 30,
-    fontWeight: "900",
-    color: COLORS.text,
-    marginTop: 2,
-  },
-
-  dateMonth: {
-    color: COLORS.muted,
-    fontSize: THEME.fontSize.sm,
-    marginTop: -2,
-  },
-
-  timePill: {
-    marginTop: THEME.spacing.sm,
-    paddingVertical: THEME.spacing.xs,
-    paddingHorizontal: THEME.spacing.md,
-    borderRadius: THEME.radius.full,
-    backgroundColor: COLORS.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  timePillText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: THEME.fontSize.sm,
-    textAlign: "center",
-  },
-
-  itemLeft: {
-    flex: 1,
-    justifyContent: "center",
-    paddingRight: THEME.spacing.sm,
-    minWidth: 0,
-  },
-
-  itemTitle: {
-    color: COLORS.text,
-    fontWeight: "700",
-    fontSize: THEME.fontSize.md,
-    lineHeight: 22,
-    flexShrink: 1,
-    textAlign: "left",
-  },
-  durationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 4,
-  },
-  durationText: {
-    color: COLORS.muted,
-    fontSize: THEME.fontSize.sm,
-    fontWeight: "600",
-  },
-  newBadge: {
-    backgroundColor: COLORS.betaBadgeBg,
-    borderColor: COLORS.betaBorder,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  newBadgeText: {
-    color: COLORS.betaText,
-    fontSize: 10,
-    fontWeight: "800",
-  },
-  announcementCard: {
-    backgroundColor: COLORS.betaBg,
-    borderColor: COLORS.betaBorder,
-    borderWidth: 1.5,
-    borderRadius: THEME.radius.md,
-    padding: THEME.spacing.md,
-    marginBottom: 8,
-    ...THEME.shadow.soft,
-  },
-  announcementHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 6,
-  },
-  announcementBadge: {
-    backgroundColor: COLORS.danger,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  announcementBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-  announcementTitle: {
-    color: COLORS.text,
-    fontSize: THEME.fontSize.md,
-    fontWeight: "800",
-  },
-  announcementText: {
-    color: COLORS.text,
-    fontSize: THEME.fontSize.sm,
-    lineHeight: 18,
-  },
-
-  statusWrap: {
-    marginTop: THEME.spacing.sm,
-    gap: 2,
-    alignItems: "flex-start",
-  },
-
-  waitText: {
-    color: "#b91c1c",
-    fontWeight: "800",
-    fontSize: THEME.fontSize.xs,
-  },
-
-  okText: {
-    color: "#15803d",
-    fontWeight: "800",
-    fontSize: THEME.fontSize.xs,
-  },
-
-  salaRight: {
-    width: 88,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingLeft: THEME.spacing.md,
-    borderLeftWidth: 1,
-    borderLeftColor: COLORS.border,
-  },
-
-  salaLabel: {
-    color: COLORS.muted,
-    fontSize: THEME.fontSize.sm,
-    letterSpacing: 1,
-  },
-
-  salaNumber: {
-    marginTop: 2,
-    fontSize: 32,
-    fontWeight: "900",
-    color: COLORS.primary,
-    lineHeight: 34,
-  },
-
-  footerLoadMore: {
-    paddingVertical: 14,
-    alignItems: "center",
-    gap: 8,
-  },
-
-  loadMoreBtn: {
-    backgroundColor: COLORS.primary,
-    borderRadius: THEME.radius.full,
-    paddingVertical: THEME.spacing.md,
-    paddingHorizontal: THEME.spacing.lg,
-    ...THEME.shadow.soft,
-  },
-
-  loadMoreText: {
-    color: "#fff",
-    fontWeight: "800",
-  },
-
-  emptyContainer: {
-    paddingVertical: 40,
-    alignItems: "center",
-  },
-
-  emptyText: {
-    color: COLORS.muted,
-    fontSize: THEME.fontSize.md,
-    textAlign: "center",
-  },
-
-  fabBR: {
-    position: "absolute",
-    right: THEME.spacing.lg,
-    bottom: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    ...THEME.shadow.web,
-  },
-
-  modalBackdropCenter: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: THEME.spacing.lg,
-  },
-
-  confirmCard: {
-    width: "100%",
-    maxWidth: 420,
-    backgroundColor: COLORS.card,
-    borderRadius: THEME.radius.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: THEME.spacing.lg,
-  },
-
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-
-  modalCard: {
-    backgroundColor: COLORS.card,
-    padding: 24,
-    borderRadius: 24,
-    width: "100%",
-    maxWidth: 500,
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
-    elevation: 8,
-  },
-
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: COLORS.text,
-    marginBottom: 8,
-  },
-
-  confirmText: {
-    color: COLORS.text,
-    marginTop: 4,
-    lineHeight: 20,
-  },
-
-  label: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginTop: 18,
-    marginBottom: 6,
-  },
-
-  input: {
-    backgroundColor: COLORS.bg,
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    color: COLORS.text,
-    fontSize: 15,
-  },
-
-  switchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: THEME.spacing.md,
-    marginTop: THEME.spacing.md,
-  },
-
-  switchLabel: {
-    color: COLORS.text,
-    fontSize: THEME.fontSize.sm,
-    fontWeight: "500",
-  },
-
-  btnGhost: {
-    backgroundColor: COLORS.bg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-  },
-
-  btnGhostDisabled: {
-    opacity: 0.5,
-  },
-
-  btnGhostText: {
-    color: COLORS.text,
-    fontWeight: "700",
-  },
-
-  btnPrimary: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-  },
-
-  btnDisabled: {
-    opacity: 0.7,
-  },
-
-  btnPrimaryText: {
-    color: "#fff",
-    fontWeight: "800",
-  },
-
-  btnDanger: {
-    backgroundColor: COLORS.danger,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-
-  salasWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 6,
-  },
-
-  salaChip: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.bg,
-  },
-
-  salaChipSelected: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-
-  salaChipText: {
-    color: COLORS.muted,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-
-  salaChipTextSelected: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-
-  moreBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: THEME.radius.sm,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: THEME.colors.bgMobile,
-    marginBottom: THEME.spacing.xs,
-  },
-
-  moreBtnText: {
-    fontSize: THEME.fontSize.md,
-    fontWeight: "900",
-    color: COLORS.text,
-    lineHeight: 18,
-  },
-
-  menuBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    alignItems: "flex-end",
-    justifyContent: "center",
-    paddingRight: THEME.spacing.lg,
-  },
-
-  menuCard: {
-    width: 200,
-    backgroundColor: COLORS.card,
-    borderRadius: THEME.radius.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...THEME.shadow.web,
-  },
-
-  menuAction: {
-    paddingVertical: THEME.spacing.md,
-    paddingHorizontal: THEME.spacing.lg,
-  },
-
-  menuActionText: {
-    color: COLORS.text,
-    fontWeight: "600",
-  },
-
-  menuDeleteText: {
-    color: "#b91c1c",
-    fontWeight: "700",
-  },
-
-  menuDivider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-  },
-
-  errorText: {
-    color: "#b91c1c",
-    fontWeight: "700",
-    marginTop: THEME.spacing.md,
-    fontSize: THEME.fontSize.sm,
-  },
-
-  modalActionsRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 14,
-  },
-
-  webDateRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  labelRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 18,
-    marginBottom: 6,
-  },
-  labelNoMargin: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-  labelBtn: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    backgroundColor: COLORS.bgMobile,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  labelBtnText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: COLORS.primary,
-  },
-  salasMultiContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 4,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 4,
-    maxWidth: 80,
-  },
-  salaBadgeCompact: {
-    backgroundColor: COLORS.primarySoft,
-    borderColor: COLORS.primary,
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    minWidth: 26,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  salaBadgeCompactText: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-});

@@ -1,5 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   addDoc,
   collection,
@@ -19,37 +17,35 @@ import {
   updateDoc,
   where,
 } from "@/lib/dbService";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Alert } from "react-native";
 import {
-  ScrollView,
-  useWindowDimensions,
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Platform,
-  Keyboard,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
-  Animated,
-} from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
+  Archive,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Calendar,
+  CheckCircle2,
+  Disc,
+  Edit3,
+  HardDrive,
+  Languages,
+  Loader2,
+  MapPin,
+  PackageCheck,
+  Plus,
+  Radio,
+  RotateCcw,
+  Search,
+  Trash2,
+  User,
+  X,
+} from "lucide-react";
 
 import { db, CINES_COLLECTION } from "../lib/firebaseConfig";
 import { getCineConfig } from "../lib/cineConfig";
-
-import { COLORS, THEME } from "../lib/theme";
 import { useAuthUser } from "../lib/useAuthUser";
 import { Dcp } from "../lib/types";
 import SEOHead from "@/components/SEOHead";
-
-/* ── helpers ── */
 
 function todayISO(): string {
   const d = new Date();
@@ -75,250 +71,13 @@ const formatDiscoLabel = (disco: string) => {
   return `Disco #${val}`;
 };
 
-/* ── component ── */
-
-/* ── component cards ── */
-
-const ActiveDcpCard = ({
-  item,
-  readOnly,
-  openMenuForDcp,
-  retirarDcp,
-  COLORS,
-  THEME,
-  formatDiscoLabel,
-  formatDate,
-}: {
-  item: Dcp;
-  readOnly: boolean;
-  openMenuForDcp: (e: any, item: Dcp) => void;
-  retirarDcp: (item: Dcp) => void;
-  COLORS: any;
-  THEME: any;
-  formatDiscoLabel: (disco: string) => string;
-  formatDate: (date: string) => string;
-}) => {
-  const [isHovered, setIsHovered] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 350,
-      useNativeDriver: Platform.OS !== "web",
-    }).start();
-  }, []);
-
-  return (
-    <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
-      <View
-        {...({
-          onMouseEnter: Platform.OS === "web" ? () => setIsHovered(true) : undefined,
-          onMouseLeave: Platform.OS === "web" ? () => setIsHovered(false) : undefined,
-        } as any)}
-        style={[
-          styles.dcpCard,
-          isHovered && styles.dcpCardHovered,
-          { borderColor: isHovered ? COLORS.primary : COLORS.border }
-        ]}
-      >
-        <View style={styles.dcpCardAccent} />
-        <View style={styles.dcpCardBody}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.dcpTitle} numberOfLines={2}>
-              {item.nombre}
-            </Text>
-            {!readOnly && (
-              <Pressable
-                onPress={(e) => openMenuForDcp(e, item)}
-                style={[
-                  styles.moreBtn,
-                  isHovered && { borderColor: COLORS.primary }
-                ]}
-              >
-                <MaterialCommunityIcons name="dots-vertical" size={18} color={COLORS.text} />
-              </Pressable>
-            )}
-          </View>
-
-          <View style={styles.metaRowCenter}>
-            <View style={styles.metaChip}>
-              <MaterialCommunityIcons name="disc" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
-              <Text style={styles.metaChipText}>{formatDiscoLabel(item.numeroDisco)}</Text>
-            </View>
-            <View style={styles.metaChip}>
-              <MaterialCommunityIcons name="map-marker" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
-              <Text style={styles.metaChipText}>{item.ubicacion}</Text>
-            </View>
-          </View>
-
-          <View style={{ alignItems: "center" }}>
-            <SubCasBadges item={item} COLORS={COLORS} />
-          </View>
-          
-          <View style={styles.metaRowCenter}>
-            <View style={styles.metaChipDate}>
-              <MaterialCommunityIcons name="calendar-arrow-right" size={14} color="#16A34A" style={{ marginRight: 4 }} />
-              <Text style={styles.metaChipDateText}>Llegó: {formatDate(item.fechaLlegada)}</Text>
-            </View>
-          </View>
-
-          {item.createdName ? (
-            <Text style={styles.dcpMetaCenter}>Cargado por: {item.createdName}</Text>
-          ) : null}
-
-          {!readOnly && (
-            <TouchableOpacity
-              style={styles.retireBtn}
-              onPress={() => retirarDcp(item)}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons name="package-down" size={16} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.retireBtnText}>Marcar como retirado</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    </Animated.View>
-  );
-};
-
-const RetiredDcpCard = ({
-  item,
-  readOnly,
-  openMenuForDcp,
-  revertirDcp,
-  COLORS,
-  THEME,
-  formatDiscoLabel,
-  formatDate,
-}: {
-  item: Dcp;
-  readOnly: boolean;
-  openMenuForDcp: (e: any, item: Dcp) => void;
-  revertirDcp: (item: Dcp) => void;
-  COLORS: any;
-  THEME: any;
-  formatDiscoLabel: (disco: string) => string;
-  formatDate: (date: string) => string;
-}) => {
-  const [isHovered, setIsHovered] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 350,
-      useNativeDriver: Platform.OS !== "web",
-    }).start();
-  }, []);
-
-  return (
-    <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
-      <View
-        {...({
-          onMouseEnter: Platform.OS === "web" ? () => setIsHovered(true) : undefined,
-          onMouseLeave: Platform.OS === "web" ? () => setIsHovered(false) : undefined,
-        } as any)}
-        style={[
-          styles.dcpCard,
-          styles.dcpCardRetired,
-          isHovered && styles.dcpCardHovered,
-          { borderColor: isHovered ? COLORS.muted : COLORS.border }
-        ]}
-      >
-        <View style={[styles.dcpCardAccent, { backgroundColor: COLORS.muted }]} />
-        <View style={styles.dcpCardBody}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={[styles.dcpTitle2, { color: COLORS.muted }]} numberOfLines={2}>
-              {item.nombre}
-            </Text>
-            {!readOnly && (
-              <Pressable onPress={(e) => openMenuForDcp(e, item)} style={styles.moreBtn}>
-                <MaterialCommunityIcons name="dots-vertical" size={18} color={COLORS.muted} />
-              </Pressable>
-            )}
-          </View>
-
-          <View style={styles.metaRowCenter}>
-            <View style={[styles.metaChip, { backgroundColor: COLORS.bg }]}>
-              <MaterialCommunityIcons name="disc" size={14} color={COLORS.muted} style={{ marginRight: 4 }} />
-              <Text style={[styles.metaChipText, { color: COLORS.muted }]}>{formatDiscoLabel(item.numeroDisco)}</Text>
-            </View>
-            <View style={[styles.metaChip, { backgroundColor: COLORS.bg }]}>
-              <MaterialCommunityIcons name="map-marker" size={14} color={COLORS.muted} style={{ marginRight: 4 }} />
-              <Text style={[styles.metaChipText, { color: COLORS.muted }]}>{item.ubicacion}</Text>
-            </View>
-          </View>
-
-          <View style={{ alignItems: "center" }}>
-            <SubCasBadges item={item} muted COLORS={COLORS} />
-          </View>
-          
-          <View style={styles.metaRowCenter}>
-            <View style={[styles.metaChipDate, { backgroundColor: "rgba(22, 163, 74, 0.08)" }]}>
-              <MaterialCommunityIcons name="calendar-arrow-right" size={14} color="#16A34A" style={{ marginRight: 4 }} />
-              <Text style={styles.metaChipDateText}>Llegó: {formatDate(item.fechaLlegada)}</Text>
-            </View>
-            {item.fechaSalida ? (
-              <View style={[styles.metaChipDate, { backgroundColor: "rgba(220, 38, 38, 0.08)" }]}>
-                <MaterialCommunityIcons name="calendar-arrow-left" size={14} color="#DC2626" style={{ marginRight: 4 }} />
-                <Text style={[styles.metaChipDateText, { color: "#DC2626" }]}>Salió: {formatDate(item.fechaSalida)}</Text>
-              </View>
-            ) : null}
-          </View>
-
-          {item.createdName ? (
-            <Text style={styles.dcpMetaCenter}>Cargado por: {item.createdName}</Text>
-          ) : null}
-
-          {!readOnly && (
-            <TouchableOpacity
-              style={[styles.retireBtn, { backgroundColor: "#64748B" }]}
-              onPress={() => revertirDcp(item)}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons name="undo" size={16} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.retireBtnText}>Marcar como no retirado</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    </Animated.View>
-  );
-};
-
-const SubCasBadges = ({ item, muted, COLORS }: { item: Dcp; muted?: boolean; COLORS: any }) => {
-  const hasSub = item.sub !== false; // default true for old docs
-  const hasCas = item.cas !== false;
-  if (!hasSub && !hasCas) return null;
-
-  const color = muted ? COLORS.muted : "#6366F1";
-  const bg = muted ? COLORS.bg : COLORS.primarySoft;
-
-  return (
-    <View style={styles.metaRow}>
-      {hasSub && (
-        <View style={[styles.metaChipSmall, { backgroundColor: bg }]}>
-          <Text style={[styles.metaChipSmallText, { color }]}>SUB</Text>
-        </View>
-      )}
-      {hasCas && (
-        <View style={[styles.metaChipSmall, { backgroundColor: bg }]}>
-          <Text style={[styles.metaChipSmallText, { color }]}>CAS</Text>
-        </View>
-      )}
-    </View>
-  );
-};
-
 export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) {
-  const { user, cineId, loading: sessionLoading, displayName } = useAuthUser();
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const { user, cineId, loading: sessionLoading } = useAuthUser();
 
   const [loading, setLoading] = useState(true);
   const [activos, setActivos] = useState<Dcp[]>([]);
-  const [showHistorial, setShowHistorial] = useState(false);
+  const [viewMode, setViewMode] = useState<"ACTIVOS" | "HISTORIAL">("ACTIVOS");
+  const [activeSearch, setActiveSearch] = useState("");
 
   /* ── historial pagination & search ── */
   const [retirados, setRetirados] = useState<Dcp[]>([]);
@@ -326,18 +85,8 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
   const [hasMoreRetirados, setHasMoreRetirados] = useState(false);
   const [lastRetRef, setLastRetRef] = useState<any>(null);
   const [historialSearch, setHistorialSearch] = useState("");
-  const searchTimer = React.useRef<NodeJS.Timeout>(undefined);
-  const HISTORIAL_PAGE = 10;
-
-  const handleNumeroDiscoChange = (t: string) => {
-    // Si contiene algo que no sea número
-    if (/[^0-9]/.test(t)) {
-      Alert.alert("Formato Inválido", "El número de disco solo acepta números (ej: 3). Si deseas cargar un satélite, toca el botón celeste 'Satélite' a la derecha.");
-      setFormNumeroDisco(t.replace(/[^0-9]/g, ""));
-    } else {
-      setFormNumeroDisco(t);
-    }
-  };
+  const searchTimer = useRef<any>(null);
+  const HISTORIAL_PAGE = 12;
 
   /* ── form state ── */
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -350,33 +99,19 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
   const [formCargadoPor, setFormCargadoPor] = useState("");
   const [formSub, setFormSub] = useState(true);
   const [formCas, setFormCas] = useState(true);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  /* ── ubicación dropdown ── */
+  /* ── ubicación options & persisted names ── */
   const [ubicacionOptions, setUbicacionOptions] = useState<string[]>(["TMS"]);
-  const [showUbicacionDropdown, setShowUbicacionDropdown] = useState(false);
-
-  /* ── nombres persistidos ── */
   const [nombresCargadores, setNombresCargadores] = useState<string[]>([]);
-  const [showNombresDropdown, setShowNombresDropdown] = useState(false);
-
-  /* ── context menu ── */
-  const [showMenu, setShowMenu] = useState(false);
-  const [menuDcp, setMenuDcp] = useState<Dcp | null>(null);
 
   /* ── confirmations ── */
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [dcpToDelete, setDcpToDelete] = useState<Dcp | null>(null);
   const [showRetireConfirm, setShowRetireConfirm] = useState(false);
   const [dcpToRetire, setDcpToRetire] = useState<Dcp | null>(null);
-
-  /* ── custom date retire ── */
   const [showCustomDate, setShowCustomDate] = useState(false);
-  const [customDateText, setCustomDateText] = useState(""); // web: DD/MM/YYYY
-  const [customDateValue, setCustomDateValue] = useState(new Date()); // android picker
-  const [showAndroidPicker, setShowAndroidPicker] = useState(false);
-
-  const columns = screenWidth >= 1100 ? 3 : screenWidth >= 768 ? 2 : 1;
-  const itemWidth: any = `${100 / columns}%`;
+  const [customDateISO, setCustomDateISO] = useState(todayISO());
 
   useEffect(() => {
     if (!cineId) return;
@@ -396,7 +131,6 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
     })();
   }, [cineId]);
 
-  /* ── load persisted cargador names from Firestore ── */
   useEffect(() => {
     if (!cineId) return;
     (async () => {
@@ -405,7 +139,7 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
         const snap = await getDoc(ref);
         if (snap.exists()) {
           const data = snap.data();
-          const list = Array.isArray(data.nombres) ? data.nombres as string[] : [];
+          const list = Array.isArray(data.nombres) ? (data.nombres as string[]) : [];
           setNombresCargadores(list);
         }
       } catch (e) {
@@ -414,7 +148,6 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
     })();
   }, [cineId]);
 
-  /** Persist a new cargador name to Firestore if not already saved */
   const persistNombre = async (nombre: string) => {
     if (!cineId || !nombre.trim()) return;
     const trimmed = nombre.trim();
@@ -431,7 +164,6 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
     }
   };
 
-  /* ── realtime listener (ONLY ACTIVOS) ── */
   useEffect(() => {
     let unsub: any;
 
@@ -459,7 +191,6 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
             ...(d.data() as any),
           })) as Dcp[];
 
-          // Client-side sort to avoid composite index requirement
           all.sort((a, b) => {
             const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
             const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
@@ -478,8 +209,6 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
 
     return () => unsub && unsub();
   }, [user, cineId, sessionLoading]);
-
-  /* ── lazy load retirados ── */
 
   const loadRetirados = async (isLoadMore = false, term = "") => {
     if (!cineId) return;
@@ -525,8 +254,8 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
         docsFetched = snap.docs.length;
         currentLastRef = snap.docs[snap.docs.length - 1];
 
-        const allFetched = snap.docs.map(d => ({ id: d.id, ...d.data() } as Dcp));
-        const retiredItems = allFetched.filter(x => x.retirado === true);
+        const allFetched = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Dcp));
+        const retiredItems = allFetched.filter((x) => x.retirado === true);
         accumulated = [...accumulated, ...retiredItems];
 
         const pageSize = searchKey ? 30 : HISTORIAL_PAGE;
@@ -536,9 +265,9 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
       }
 
       if (isLoadMore) {
-        setRetirados(prev => {
-          const map = new Map(prev.map(i => [i.id, i]));
-          accumulated.forEach(i => map.set(i.id, i));
+        setRetirados((prev) => {
+          const map = new Map(prev.map((i) => [i.id, i]));
+          accumulated.forEach((i) => map.set(i.id, i));
           return Array.from(map.values());
         });
       } else {
@@ -551,7 +280,6 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
       setHasMoreRetirados(docsFetched === pageSize && accumulated.length > 0);
     } catch (e: any) {
       console.error("Historial error:", e);
-      Alert.alert("Error", "No se pudo cargar el historial. Pedile a soporte que cree el índice de Firestore. Abrí la consola (F12) para tener el link.");
     } finally {
       setLoadingRetirados(false);
     }
@@ -562,10 +290,20 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       loadRetirados(false, text);
-    }, 400);
+    }, 350);
   };
 
-  /* ── form actions ── */
+  const filteredActivos = useMemo(() => {
+    const q = activeSearch.trim().toLowerCase();
+    if (!q) return activos;
+    return activos.filter(
+      (item) =>
+        (item.nombre || "").toLowerCase().includes(q) ||
+        (item.numeroDisco || "").toLowerCase().includes(q) ||
+        (item.ubicacion || "").toLowerCase().includes(q) ||
+        (item.createdName || "").toLowerCase().includes(q)
+    );
+  }, [activos, activeSearch]);
 
   const openNew = () => {
     setEditingId(null);
@@ -576,8 +314,7 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
     setFormCargadoPor("");
     setFormSub(true);
     setFormCas(true);
-    setShowUbicacionDropdown(false);
-    setShowNombresDropdown(false);
+    setFormError(null);
     setSaving(false);
     setShowForm(true);
   };
@@ -590,7 +327,7 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
     setFormSub(d.sub !== false);
     setFormCas(d.cas !== false);
 
-    const dLow = d.numeroDisco.toLowerCase().trim();
+    const dLow = (d.numeroDisco || "").toLowerCase().trim();
     if (dLow === "satelite" || dLow === "satélite") {
       setFormEsSatelite(true);
       setFormNumeroDisco("");
@@ -599,31 +336,32 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
       setFormNumeroDisco(d.numeroDisco);
     }
 
-    setShowUbicacionDropdown(false);
-    setShowNombresDropdown(false);
+    setFormError(null);
     setSaving(false);
     setShowForm(true);
   };
 
-  const addDcp = async () => {
+  const addDcp = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!user || !cineId) return;
+    setFormError(null);
 
     if (!formNombre.trim()) {
-      Alert.alert("DCP", "Ingresá el nombre del DCP (obligatorio).");
+      setFormError("Ingresá el título de la película / DCP.");
       return;
     }
     if (!formEsSatelite) {
       if (!formNumeroDisco.trim()) {
-        Alert.alert("DCP", "Ingresá el número de disco (obligatorio) o seleccioná Satélite.");
+        setFormError("Ingresá el número de disco o seleccioná 'Satélite'.");
         return;
       }
       if (!/^\d+$/.test(formNumeroDisco.trim())) {
-        Alert.alert("DCP", "El número de disco debe contener únicamente números. Si es un satélite, utiliza el botón lateral.");
+        setFormError("El número de disco solo debe contener dígitos numéricos.");
         return;
       }
     }
     if (!formCargadoPor.trim()) {
-      Alert.alert("DCP", "Ingresá quién carga el DCP (obligatorio).");
+      setFormError("Indicá quién realizó la ingesta/carga del DCP.");
       return;
     }
 
@@ -632,7 +370,7 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
       const cargadoPor = formCargadoPor.trim();
 
       const changes = {
-        nombre: formNombre.trim(),
+        nombre: formNombre.trim().toUpperCase(),
         numeroDisco: formEsSatelite ? "Satelite" : formNumeroDisco.trim(),
         ubicacion: formUbicacion,
         sub: formSub,
@@ -653,152 +391,65 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
         });
       }
 
-      // persist the name for future use
       await persistNombre(cargadoPor);
-
       setShowForm(false);
       setEditingId(null);
-    } catch (e) {
-      console.error(e);
-      Alert.alert("DCP", "No se pudo guardar la información del DCP.");
+    } catch (err) {
+      console.error(err);
+      setFormError("No se pudo guardar la información del DCP.");
     } finally {
       setSaving(false);
     }
   };
 
-  /* ── menu / retire / delete ── */
-  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
-
-  const openMenuForDcp = (e: any, d: Dcp) => {
-    let { pageX, pageY } = e.nativeEvent;
-    let x = pageX - 150; // default to left of the cursor
-    let y = pageY;
-
-    // Bounds check
-    if (x < 10) x = 10;
-    if (y + 120 > screenHeight) y = pageY - 110;
-
-    setMenuPos({ x, y });
-    setMenuDcp(d);
-    setShowMenu(true);
-  };
-
-  const closeMenu = () => {
-    setShowMenu(false);
-    setMenuDcp(null);
-  };
-
   const retirarDcp = (d: Dcp) => {
     setDcpToRetire(d);
     setShowCustomDate(false);
-    setCustomDateText("");
-    setCustomDateValue(new Date());
-    setShowAndroidPicker(false);
+    setCustomDateISO(todayISO());
     setShowRetireConfirm(true);
   };
 
-  const confirmRetirar = async () => {
+  const confirmRetirar = async (fechaSalida: string) => {
     if (!dcpToRetire || !cineId) return;
     try {
-      await updateDoc(
-        doc(db, CINES_COLLECTION, cineId, "dcp", dcpToRetire.id),
-        { retirado: true, fechaSalida: todayISO() }
-      );
-      setShowRetireConfirm(false);
-      setDcpToRetire(null);
-    } catch (e) {
-      console.error(e);
-      Alert.alert("DCP", "No se pudo retirar el DCP.");
-    }
-  };
-
-  /** Parse DD/MM/YYYY → YYYY-MM-DD */
-  const parseDateInput = (text: string): string | null => {
-    const m = text.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (!m) return null;
-    const [, dd, mm, yyyy] = m;
-    const d = parseInt(dd, 10), mo = parseInt(mm, 10), y = parseInt(yyyy, 10);
-    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-    return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  };
-
-  const confirmRetirarCustomDate = async () => {
-    if (!dcpToRetire || !cineId) return;
-
-    let fechaSalida: string;
-
-    if (Platform.OS === "web") {
-      const parsed = parseDateInput(customDateText);
-      if (!parsed) {
-        Alert.alert("Fecha inválida", "Usá el formato DD/MM/AAAA (ej: 28/03/2026)");
-        return;
-      }
-      fechaSalida = parsed;
-    } else {
-      // Android — use customDateValue from picker
-      const d = customDateValue;
-      fechaSalida = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    }
-
-    try {
-      await updateDoc(
-        doc(db, CINES_COLLECTION, cineId, "dcp", dcpToRetire.id),
-        { retirado: true, fechaSalida }
-      );
+      await updateDoc(doc(db, CINES_COLLECTION, cineId, "dcp", dcpToRetire.id), {
+        retirado: true,
+        fechaSalida,
+      });
       setShowRetireConfirm(false);
       setShowCustomDate(false);
       setDcpToRetire(null);
+      if (viewMode === "HISTORIAL") {
+        loadRetirados(false, historialSearch);
+      }
     } catch (e) {
       console.error(e);
-      Alert.alert("DCP", "No se pudo retirar el DCP.");
+      Alert.alert("DCP", "No se pudo marcar como retirado.");
     }
   };
 
-  const deshacerRetiro = async (d: Dcp) => {
-    if (readOnly) return;
-    if (!cineId) return;
-
+  const revertirDcp = async (d: Dcp) => {
+    if (readOnly || !cineId) return;
+    if (!window.confirm(`¿Devolver "${d.nombre}" a la lista de DCPs activos en complejo?`)) {
+      return;
+    }
     try {
-      await updateDoc(
-        doc(db, CINES_COLLECTION, cineId, "dcp", d.id),
-        {
-          retirado: false,
-          fechaSalida: null,
-        }
-      );
+      await updateDoc(doc(db, CINES_COLLECTION, cineId, "dcp", d.id), {
+        retirado: false,
+        fechaSalida: null,
+      });
+      setRetirados((prev) => prev.filter((x) => x.id !== d.id));
     } catch (e) {
       console.error("ERROR REVERTIR:", e);
       Alert.alert("DCP", "No se pudo revertir el retiro.");
     }
-  };
-  const revertirDcp = (d: Dcp) => {
-    const title = "Revertir retiro";
-    const msg = `¿Volver "${d.nombre}" a activos?`;
-
-    if (Platform.OS === "web") {
-      if (window.confirm(`${title}\n\n${msg}`)) {
-        deshacerRetiro(d);
-      }
-    } else {
-      Alert.alert(
-        title,
-        msg,
-        [
-          { text: "Cancelar", style: "cancel" },
-          { text: "Confirmar", onPress: () => deshacerRetiro(d) },
-        ]
-      );
-    }
-  };
-  const removeDcp = (d: Dcp) => {
-    setDcpToDelete(d);
-    setShowDeleteConfirm(true);
   };
 
   const confirmRemoveDcp = async () => {
     if (!dcpToDelete || !cineId) return;
     try {
       await deleteDoc(doc(db, CINES_COLLECTION, cineId, "dcp", dcpToDelete.id));
+      setRetirados((prev) => prev.filter((x) => x.id !== dcpToDelete.id));
       setShowDeleteConfirm(false);
       setDcpToDelete(null);
     } catch (e) {
@@ -807,46 +458,16 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
     }
   };
 
-  /* ── render items ── */
-
-  const renderActiveItem = ({ item }: { item: Dcp }) => (
-    <ActiveDcpCard
-      item={item}
-      readOnly={readOnly}
-      openMenuForDcp={openMenuForDcp}
-      retirarDcp={retirarDcp}
-      COLORS={COLORS}
-      THEME={THEME}
-      formatDiscoLabel={formatDiscoLabel}
-      formatDate={formatDate}
-    />
-  );
-
-  const renderRetiredItem = ({ item }: { item: Dcp }) => (
-    <RetiredDcpCard
-      item={item}
-      readOnly={readOnly}
-      openMenuForDcp={openMenuForDcp}
-      revertirDcp={revertirDcp}
-      COLORS={COLORS}
-      THEME={THEME}
-      formatDiscoLabel={formatDiscoLabel}
-      formatDate={formatDate}
-    />
-  );
-
-  /* ── loading ── */
-
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-        <Text style={styles.loadingText}>Cargando DCPs…</Text>
-      </View>
+      <div className="flex min-h-[280px] flex-col items-center justify-center gap-2.5">
+        <Loader2 className="h-6 w-6 animate-spin text-rose-600 dark:text-rose-500" />
+        <span className="text-xs font-medium text-slate-500 dark:text-zinc-400">
+          Cargando inventario DCP…
+        </span>
+      </div>
     );
   }
-
-  /* ── main render ── */
 
   return (
     <>
@@ -855,1039 +476,684 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
         description="Monitoreo, ingesta y control de copias digitales DCP y llaves de seguridad KDM para salas de cine."
         pathname="/dcp"
       />
-      <View
-        style={styles.container}
-        {...(Platform.OS === "web" ? ({ role: "main" } as any) : {})}
-        accessibilityRole="none"
-      >
-      <ScrollView contentContainerStyle={styles.listContent}>
-        {loading && activos.length === 0 ? (
-          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} />
-        ) : activos.length === 0 ? (
-          <View style={styles.center}>
-            <Text style={styles.loadingText}>Sin DCPs activos por el momento.</Text>
-          </View>
-        ) : (
-          <View style={styles.gridContainer}>
-            {activos.map(item => (
-              <View key={item.id} style={{ width: itemWidth, padding: 8 }}>
-                {renderActiveItem({ item })}
-              </View>
-            ))}
-          </View>
-        )}
 
-        {/* ── HISTORIAL SECTION ── */}
-        <View>
-          <TouchableOpacity
-            style={styles.historialToggle}
-            onPress={() => {
-              const next = !showHistorial;
-              setShowHistorial(next);
-              if (next) {
-                setHistorialSearch("");
-                loadRetirados(false, "");
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <MaterialCommunityIcons
-              name={showHistorial ? "chevron-up" : "chevron-down"}
-              size={20}
-              color={COLORS.primary}
-              style={{ marginRight: 8 }}
-            />
-            <Text style={styles.historialToggleText}>
-              Historial de retirados
-            </Text>
-          </TouchableOpacity>
+      <main className="w-full pb-20">
+        {/* Top Command Bar */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Segmented Switcher */}
+            <div className="inline-flex rounded-lg border border-slate-200/80 bg-slate-100/80 p-0.5 dark:border-zinc-800 dark:bg-zinc-950">
+              <button
+                type="button"
+                onClick={() => setViewMode("ACTIVOS")}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all ${
+                  viewMode === "ACTIVOS"
+                    ? "bg-white text-slate-900 shadow-xs dark:bg-zinc-800 dark:text-zinc-100"
+                    : "text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                }`}
+              >
+                <Disc className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
+                <span>En Complejo</span>
+                <span className="rounded-full bg-rose-100 px-1.5 py-0.2 font-mono text-[10px] font-extrabold text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                  {activos.length}
+                </span>
+              </button>
 
-          {showHistorial && (
-            <View style={styles.historialSection}>
-              {/* Search bar */}
-              <View style={styles.historialSearchWrap}>
-                <TextInput
-                  value={historialSearch}
-                  onChangeText={handleSearchHistorial}
-                  placeholder="Buscar en retirados…"
-                  placeholderTextColor={COLORS.muted}
-                  style={styles.historialSearchInput}
-                  returnKeyType="search"
-                  onSubmitEditing={Keyboard.dismiss}
-                  autoCapitalize="none"
-                />
-                {historialSearch ? (
-                  <TouchableOpacity
-                    onPress={() => {
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("HISTORIAL");
+                  if (retirados.length === 0) {
+                    loadRetirados(false, historialSearch);
+                  }
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all ${
+                  viewMode === "HISTORIAL"
+                    ? "bg-white text-slate-900 shadow-xs dark:bg-zinc-800 dark:text-zinc-100"
+                    : "text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                }`}
+              >
+                <Archive className="h-3.5 w-3.5 text-slate-500" />
+                <span>Historial Retirados</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-1 items-center justify-end gap-2 sm:flex-initial">
+            <div className="relative w-full max-w-[240px]">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={viewMode === "ACTIVOS" ? activeSearch : historialSearch}
+                onChange={(e) =>
+                  viewMode === "ACTIVOS"
+                    ? setActiveSearch(e.target.value)
+                    : handleSearchHistorial(e.target.value)
+                }
+                placeholder={
+                  viewMode === "ACTIVOS"
+                    ? "Filtrar disco, película, sala…"
+                    : "Buscar en historial…"
+                }
+                className="w-full rounded-lg border border-slate-200 bg-slate-50/70 py-1.5 pl-8 pr-7 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
+              />
+              {(viewMode === "ACTIVOS" ? activeSearch : historialSearch) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (viewMode === "ACTIVOS") {
+                      setActiveSearch("");
+                    } else {
                       setHistorialSearch("");
                       loadRetirados(false, "");
-                    }}
-                    style={styles.historialClearBtn}
-                  >
-                    <Text style={styles.historialClearBtnText}>×</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-
-              {loadingRetirados && retirados.length === 0 ? (
-                <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 20 }} />
-              ) : retirados.length === 0 ? (
-                <Text style={[styles.emptyText, { marginTop: 12 }]}>
-                  {historialSearch ? "Sin resultados" : "Sin DCPs retirados"}
-                </Text>
-              ) : (
-                <>
-                  <View style={styles.gridContainer}>
-                    {retirados.map((item) => (
-                      <View key={item.id} style={{ width: itemWidth, padding: 8 }}>
-                        {renderRetiredItem({ item })}
-                      </View>
-                    ))}
-                  </View>
-                  {loadingRetirados ? (
-                    <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 10 }} />
-                  ) : hasMoreRetirados ? (
-                    <TouchableOpacity
-                      style={styles.loadMoreBtn}
-                      onPress={() => loadRetirados(true, historialSearch)}
-                      activeOpacity={0.9}
-                    >
-                      <Text style={styles.loadMoreText}>Cargar más</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </>
-              )}
-            </View>
-          )}
-
-        </View>
-      </ScrollView>
-
-      {/* FAB */}
-      {!readOnly && (
-        <TouchableOpacity style={styles.fabBR} onPress={openNew} activeOpacity={0.9}>
-          <MaterialCommunityIcons name="plus" size={24} color="#fff" />
-        </TouchableOpacity>
-      )}
-
-      {/* ── Context menu ── */}
-      <Modal visible={showMenu} transparent animationType="fade" onRequestClose={closeMenu}>
-        <TouchableWithoutFeedback onPress={closeMenu}>
-          <View style={[styles.menuBackdrop, { alignItems: "flex-start", justifyContent: "flex-start" }]}>
-            <TouchableWithoutFeedback>
-              <View style={[styles.menuCard, { position: "absolute", top: menuPos.y, left: menuPos.x }]}>
-                {menuDcp && (
-                  <>
-                    <Pressable
-                      style={styles.menuAction}
-                      onPress={() => { const d = menuDcp; closeMenu(); openEdit(d); }}
-                    >
-                      <Text style={styles.menuActionText}>✏️ Editar</Text>
-                    </Pressable>
-                    <View style={styles.menuDivider} />
-                  </>
-                )}
-                <Pressable
-                  style={styles.menuAction}
-                  onPress={() => { const d = menuDcp; closeMenu(); if (d) removeDcp(d); }}
+                    }
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
-                  <Text style={styles.menuDeleteText}>🗑️ Eliminar</Text>
-                </Pressable>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
 
-      {/* ── Retire confirmation ── */}
-      <Modal
-        visible={showRetireConfirm}
-        animationType="fade"
-        transparent
-        onRequestClose={() => { setShowRetireConfirm(false); setDcpToRetire(null); setShowCustomDate(false); }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.confirmCard}>
-            <Text style={styles.modalTitle}>Retirar DCP</Text>
-            <Text style={styles.confirmText}>
-              {dcpToRetire ? `¿Marcar "${dcpToRetire.nombre}" como retirado?` : "¿Marcar este DCP como retirado?"}
-            </Text>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={openNew}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-rose-700"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Ingresar DCP</span>
+              </button>
+            )}
+          </div>
+        </div>
 
-            {!showCustomDate ? (
-              <>
-                <Text style={[styles.confirmText, { marginTop: 4, color: COLORS.muted, fontSize: 13 }]}>
-                  Se registrará la fecha de hoy como salida.
-                </Text>
-                <View style={styles.retireActionsCol}>
-                  <TouchableOpacity style={styles.retireActionBtn} onPress={confirmRetirar}>
-                    <MaterialCommunityIcons name="calendar-today" size={18} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.retireActionBtnText}>Retirar hoy</Text>
-                  </TouchableOpacity>
+        {/* ── VIEW 1: ACTIVOS ── */}
+        {viewMode === "ACTIVOS" && (
+          <>
+            {filteredActivos.length === 0 ? (
+              <div className="animate-card-in flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/60 px-6 py-12 text-center dark:border-zinc-800 dark:bg-zinc-900/40">
+                <div className="mb-2.5 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-zinc-800 dark:text-zinc-500">
+                  <HardDrive className="h-5 w-5" />
+                </div>
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
+                  {activeSearch ? "Sin coincidencias" : "Sin DCPs activos en complejo"}
+                </h3>
+                <p className="mt-1 max-w-xs text-xs text-slate-500 dark:text-zinc-400">
+                  {activeSearch
+                    ? "Probá con otro nombre o número de disco."
+                    : "Registrá la llegada de discos físicos o descargas por satélite para llevar control de ingesta."}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {filteredActivos.map((item, idx) => {
+                  const isSat =
+                    (item.numeroDisco || "").toLowerCase().includes("satelite") ||
+                    (item.numeroDisco || "").toLowerCase().includes("satélite");
+                  const hasSub = item.sub !== false;
+                  const hasCas = item.cas !== false;
 
-                  <TouchableOpacity
-                    style={[styles.retireActionBtn, { backgroundColor: "#6366F1" }]}
-                    onPress={() => setShowCustomDate(true)}
-                  >
-                    <MaterialCommunityIcons name="calendar-edit" size={18} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.retireActionBtnText}>Fecha específica</Text>
-                  </TouchableOpacity>
+                  return (
+                    <div
+                      key={item.id}
+                      style={{ animationDelay: `${Math.min(idx * 30, 240)}ms` }}
+                      className="animate-card-in hover-lift group relative flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-sm transition-colors hover:border-slate-300 dark:border-zinc-800/90 dark:bg-zinc-900 dark:hover:border-zinc-700"
+                    >
+                      <div className="absolute inset-x-0 top-0 h-0.5 bg-rose-600" />
 
-                  <TouchableOpacity
-                    style={[styles.retireActionBtn, { backgroundColor: COLORS.border }]}
-                    onPress={() => { setShowRetireConfirm(false); setDcpToRetire(null); }}
-                  >
-                    <Text style={[styles.retireActionBtnText, { color: COLORS.text }]}>Cancelar</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
+                      <div>
+                        {/* Title + Actions */}
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="line-clamp-2 text-xs font-extrabold uppercase tracking-tight text-slate-900 dark:text-zinc-100">
+                            {item.nombre}
+                          </h3>
+
+                          {!readOnly && (
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openEdit(item)}
+                                title="Editar DCP"
+                                className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDcpToDelete(item);
+                                  setShowDeleteConfirm(true);
+                                }}
+                                title="Eliminar DCP"
+                                className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Chips Row */}
+                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-bold ${
+                              isSat
+                                ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-300"
+                                : "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300"
+                            }`}
+                          >
+                            {isSat ? (
+                              <Radio className="h-3 w-3" />
+                            ) : (
+                              <HardDrive className="h-3 w-3" />
+                            )}
+                            {formatDiscoLabel(item.numeroDisco)}
+                          </span>
+
+                          <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">
+                            <MapPin className="h-3 w-3 text-slate-400" />
+                            {item.ubicacion}
+                          </span>
+
+                          {hasSub && (
+                            <span className="rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-300">
+                              SUB
+                            </span>
+                          )}
+                          {hasCas && (
+                            <span className="rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-300">
+                              CAS
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Arrival & Operator */}
+                        <div className="mt-2.5 flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/70 px-2.5 py-1.5 text-[11px] dark:border-zinc-800/70 dark:bg-zinc-950/60">
+                          <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-400">
+                            <ArrowDownLeft className="h-3 w-3" />
+                            Llegó: {formatDate(item.fechaLlegada)}
+                          </span>
+                          {item.createdName && (
+                            <span className="inline-flex items-center gap-1 text-slate-500 dark:text-zinc-400">
+                              <User className="h-3 w-3" />
+                              {item.createdName}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={() => retirarDcp(item)}
+                          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-rose-600 dark:bg-zinc-800 dark:hover:bg-rose-600"
+                        >
+                          <PackageCheck className="h-3.5 w-3.5" />
+                          <span>Marcar como retirado</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── VIEW 2: HISTORIAL RETIRADOS ── */}
+        {viewMode === "HISTORIAL" && (
+          <>
+            {loadingRetirados && retirados.length === 0 ? (
+              <div className="flex min-h-[220px] flex-col items-center justify-center gap-2">
+                <Loader2 className="h-5 w-5 animate-spin text-rose-600" />
+                <span className="text-xs text-slate-500">Consultando historial…</span>
+              </div>
+            ) : retirados.length === 0 ? (
+              <div className="animate-card-in flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/60 px-6 py-12 text-center dark:border-zinc-800 dark:bg-zinc-900/40">
+                <Archive className="mb-2 h-6 w-6 text-slate-400" />
+                <p className="text-xs font-medium text-slate-500">
+                  {historialSearch ? "Sin resultados en el historial" : "Sin DCPs retirados"}
+                </p>
+              </div>
             ) : (
               <>
-                <Text style={[styles.confirmText, { marginTop: 4, color: COLORS.muted, fontSize: 13 }]}>
-                  Ingresá la fecha de salida
-                </Text>
-
-                {Platform.OS === "web" ? (
-                  <View style={styles.fieldGroup}>
-                    <TextInput
-                      style={styles.modalInputModern}
-                      placeholder="DD/MM/AAAA"
-                      placeholderTextColor="#94A3B8"
-                      value={customDateText}
-                      onChangeText={setCustomDateText}
-                      keyboardType="numbers-and-punctuation"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-                  </View>
-                ) : (
-                  <View style={{ alignItems: "center", marginVertical: 12 }}>
-                    <TouchableOpacity
-                      style={styles.dropdownTrigger}
-                      onPress={() => setShowAndroidPicker(true)}
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {retirados.map((item, idx) => (
+                    <div
+                      key={item.id}
+                      style={{ animationDelay: `${Math.min(idx * 25, 200)}ms` }}
+                      className="animate-card-in flex flex-col justify-between rounded-xl border border-slate-200/80 bg-white/80 p-3.5 opacity-90 shadow-xs dark:border-zinc-800/80 dark:bg-zinc-900/70"
                     >
-                      <Text style={styles.dropdownTriggerText}>
-                        {customDateValue
-                          ? formatDate(`${customDateValue.getFullYear()}-${String(customDateValue.getMonth() + 1).padStart(2, "0")}-${String(customDateValue.getDate()).padStart(2, "0")}`)
-                          : "Seleccionar fecha"}
-                      </Text>
-                      <MaterialCommunityIcons name="calendar" size={20} color={COLORS.muted} />
-                    </TouchableOpacity>
-                    {showAndroidPicker && (
-                      <DateTimePicker
-                        value={customDateValue}
-                        mode="date"
-                        display="default"
-                        onChange={(_: any, selectedDate?: Date) => {
-                          setShowAndroidPicker(false);
-                          if (selectedDate) setCustomDateValue(selectedDate);
-                        }}
-                      />
-                    )}
-                  </View>
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="line-clamp-2 text-xs font-bold uppercase text-slate-600 dark:text-zinc-300">
+                            {item.nombre}
+                          </h3>
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDcpToDelete(item);
+                                setShowDeleteConfirm(true);
+                              }}
+                              className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <span className="rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 font-semibold text-slate-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
+                            {formatDiscoLabel(item.numeroDisco)}
+                          </span>
+                          <span className="rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 font-medium text-slate-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
+                            {item.ubicacion}
+                          </span>
+                        </div>
+
+                        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-1.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950">
+                          <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                            <ArrowDownLeft className="h-3 w-3" />
+                            {formatDate(item.fechaLlegada)}
+                          </span>
+                          {item.fechaSalida && (
+                            <span className="inline-flex items-center gap-1 font-semibold text-rose-600 dark:text-rose-400">
+                              <ArrowUpRight className="h-3 w-3" />
+                              Salió: {formatDate(item.fechaSalida)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={() => revertirDcp(item)}
+                          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          <span>Devolver a activos</span>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {hasMoreRetirados && (
+                  <div className="mt-4 text-center">
+                    <button
+                      type="button"
+                      disabled={loadingRetirados}
+                      onClick={() => loadRetirados(true, historialSearch)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                    >
+                      {loadingRetirados && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      <span>Cargar más retirados</span>
+                    </button>
+                  </div>
                 )}
-
-                <View style={styles.retireActionsCol}>
-                  <TouchableOpacity style={styles.retireActionBtn} onPress={confirmRetirarCustomDate}>
-                    <MaterialCommunityIcons name="check" size={18} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.retireActionBtnText}>Confirmar fecha</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.retireActionBtn, { backgroundColor: COLORS.bgMobile, borderWidth: 1, borderColor: COLORS.border }]}
-                    onPress={() => setShowCustomDate(false)}
-                  >
-                    <Text style={[styles.retireActionBtnText, { color: COLORS.text }]}>Volver</Text>
-                  </TouchableOpacity>
-                </View>
               </>
             )}
-          </View>
-        </View>
-      </Modal>
+          </>
+        )}
 
-      {/* ── Delete confirmation ── */}
-      <Modal
-        visible={showDeleteConfirm}
-        animationType="fade"
-        transparent
-        onRequestClose={() => { setShowDeleteConfirm(false); setDcpToDelete(null); }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.confirmCard}>
-            <Text style={styles.modalTitle}>Eliminar DCP</Text>
-            <Text style={styles.confirmText}>
-              {dcpToDelete ? `¿Eliminar "${dcpToDelete.nombre}"?` : "¿Eliminar este DCP?"}
-            </Text>
-            <View style={styles.modalActionsModern}>
-              <TouchableOpacity style={styles.cancelBtnModern} onPress={() => { setShowDeleteConfirm(false); setDcpToDelete(null); }}>
-                <Text style={styles.cancelBtnTextModern}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.deleteBtnModern} onPress={confirmRemoveDcp}>
-                <Text style={styles.deleteBtnTextModern}>Eliminar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        {/* Floating Quick-Add Pill */}
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={openNew}
+            className="fixed bottom-6 right-6 z-30 inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-slate-900/25 ring-1 ring-white/10 hover:bg-rose-600 dark:bg-rose-600 dark:hover:bg-rose-500"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Ingresar DCP</span>
+          </button>
+        )}
 
-      {/* ── New/Edit DCP form ── */}
-      <Modal visible={showForm} animationType="fade" transparent onRequestClose={() => setShowForm(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCardModern}>
-            <Text style={styles.modalTitleModern}>{editingId ? "Editar DCP" : "Nuevo DCP"}</Text>
-            <Text style={styles.modalSubtitleModern}>
-              {editingId ? "Modificá la información de este DCP." : "Completá los datos para registrar un nuevo disco."}
-            </Text>
+        {/* ── RETIRE CONFIRM MODAL ── */}
+        {showRetireConfirm && (
+          <div className="animate-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-xs">
+            <div className="animate-modal-in w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400">
+                <PackageCheck className="h-5 w-5" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">
+                Retirar DCP del complejo
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                {dcpToRetire
+                  ? `Seleccioná la fecha de salida para "${dcpToRetire.nombre}".`
+                  : "Seleccioná la fecha de retiro."}
+              </p>
 
-            {/* Nombre */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Nombre</Text>
-              <TextInput
-                style={styles.modalInputModern}
-                placeholder="Ej: CAPITÁN AMÉRICA"
-                value={formNombre}
-                onChangeText={(t) => setFormNombre(t.toUpperCase())}
-                returnKeyType="next"
-                placeholderTextColor="#94A3B8"
-              />
-            </View>
-
-            {/* Número de disco o Satélite */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Número de disco</Text>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <TextInput
-                  style={[
-                    styles.modalInputModern,
-                    { flex: 1, marginRight: 10 },
-                    formEsSatelite && { backgroundColor: COLORS.bg, color: COLORS.muted }
-                  ]}
-                  placeholder={formEsSatelite ? "Satélite seleccionado" : "Ej: 3"}
-                  value={formEsSatelite ? "Satélite" : formNumeroDisco}
-                  onChangeText={handleNumeroDiscoChange}
-                  returnKeyType="next"
-                  placeholderTextColor="#94A3B8"
-                  keyboardType="number-pad"
-                  editable={!formEsSatelite}
-                />
-                <TouchableOpacity
-                  onPress={() => setFormEsSatelite(!formEsSatelite)}
-                  activeOpacity={0.8}
-                  style={{
-                    backgroundColor: formEsSatelite ? COLORS.primary : COLORS.border,
-                    paddingVertical: THEME.spacing.md,
-                    paddingHorizontal: THEME.spacing.lg,
-                    borderRadius: THEME.radius.md,
-                    justifyContent: "center",
-                    alignItems: "center"
-                  }}
-                >
-                  <Text style={{
-                    color: formEsSatelite ? "#fff" : COLORS.muted,
-                    fontWeight: "600",
-                    fontSize: 14
-                  }}>
-                    Satélite
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Ubicación — dropdown */}
-            <View style={[styles.fieldGroup, { zIndex: 20 }]}>
-              <Text style={styles.fieldLabel}>Ubicación</Text>
-              <TouchableOpacity
-                style={styles.dropdownTrigger}
-                onPress={() => {
-                  setShowUbicacionDropdown(!showUbicacionDropdown);
-                  setShowNombresDropdown(false);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.dropdownTriggerText}>{formUbicacion}</Text>
-                <MaterialCommunityIcons
-                  name={showUbicacionDropdown ? "chevron-up" : "chevron-down"}
-                  size={20}
-                  color={COLORS.muted}
-                />
-              </TouchableOpacity>
-              {showUbicacionDropdown && (
-                <View style={styles.dropdownList}>
-                  <ScrollView nestedScrollEnabled showsVerticalScrollIndicator>
-                    {ubicacionOptions.map((opt) => (
-                      <TouchableOpacity
-                        key={opt}
-                        style={[
-                          styles.dropdownItem,
-                          formUbicacion === opt && styles.dropdownItemActive,
-                        ]}
-                        onPress={() => {
-                          setFormUbicacion(opt);
-                          setShowUbicacionDropdown(false);
-                        }}
-                      >
-                        <Text
-                          style={[
-                            styles.dropdownItemText,
-                            formUbicacion === opt && styles.dropdownItemTextActive,
-                          ]}
-                        >
-                          {opt}
-                        </Text>
-                        {formUbicacion === opt && (
-                          <MaterialCommunityIcons name="check" size={16} color={COLORS.primary} />
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
+              {!showCustomDate ? (
+                <div className="mt-4 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => confirmRetirar(todayISO())}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700"
+                  >
+                    <Calendar className="h-3.5 w-3.5" />
+                    <span>Retirar con fecha de hoy ({formatDate(todayISO())})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomDate(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                  >
+                    <span>Elegir otra fecha de salida…</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRetireConfirm(false);
+                      setDcpToRetire(null);
+                    }}
+                    className="flex w-full items-center justify-center rounded-lg px-4 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                      Fecha de salida
+                    </label>
+                    <input
+                      type="date"
+                      value={customDateISO}
+                      onChange={(e) => setCustomDateISO(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                    />
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomDate(false)}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:border-zinc-700 dark:text-zinc-300"
+                    >
+                      Volver
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => confirmRetirar(customDateISO || todayISO())}
+                      className="rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-700"
+                    >
+                      Confirmar retiro
+                    </button>
+                  </div>
+                </div>
               )}
-            </View>
+            </div>
+          </div>
+        )}
 
-            {/* Cargado por — with autocomplete dropdown */}
-            <View style={[styles.fieldGroup, { zIndex: 10 }]}>
-              <Text style={styles.fieldLabel}>Cargado por</Text>
-              <View>
-                <TextInput
-                  style={styles.modalInputModern}
-                  placeholder="Nombre de quien carga"
-                  value={formCargadoPor}
-                  onChangeText={(t) => {
-                    setFormCargadoPor(t);
-                    setShowNombresDropdown(t.length === 0 && nombresCargadores.length > 0);
+        {/* ── DELETE CONFIRM MODAL ── */}
+        {showDeleteConfirm && (
+          <div className="animate-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-xs">
+            <div className="animate-modal-in w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">
+                Eliminar DCP
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                {dcpToDelete
+                  ? `¿Confirmás que querés eliminar permanentemente "${dcpToDelete.nombre}"?`
+                  : "¿Eliminar este DCP?"}
+              </p>
+
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setDcpToDelete(null);
                   }}
-                  onFocus={() => {
-                    if (nombresCargadores.length > 0) setShowNombresDropdown(true);
-                    setShowUbicacionDropdown(false);
-                  }}
-                  returnKeyType="done"
-                  placeholderTextColor="#94A3B8"
-                />
-                {showNombresDropdown && nombresCargadores.length > 0 && (
-                  <View style={styles.dropdownList}>
-                    {nombresCargadores
-                      .filter((n) =>
-                        formCargadoPor.trim()
-                          ? n.toLowerCase().includes(formCargadoPor.trim().toLowerCase())
-                          : true
-                      )
-                      .map((nombre) => (
-                        <TouchableOpacity
-                          key={nombre}
-                          style={styles.dropdownItem}
-                          onPress={() => {
-                            setFormCargadoPor(nombre);
-                            setShowNombresDropdown(false);
-                          }}
+                  className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmRemoveDcp}
+                  className="rounded-lg bg-rose-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-rose-700"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── CREATE / EDIT DCP MODAL ── */}
+        {showForm && (
+          <div className="animate-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-xs">
+            <div className="animate-modal-in flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5 dark:border-zinc-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400">
+                    <Disc className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100">
+                      {editingId ? "Editar Registro DCP" : "Ingresar Nuevo DCP"}
+                    </h2>
+                    <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                      Control de discos físicos, transmisión satelital e idiomas
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-zinc-800"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <form onSubmit={addDcp} className="flex-1 space-y-4 overflow-y-auto p-5">
+                {/* Movie Name */}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                    Película / Nombre del DCP *
+                  </label>
+                  <input
+                    type="text"
+                    value={formNombre}
+                    onChange={(e) => setFormNombre(e.target.value.toUpperCase())}
+                    placeholder="Ej: GLADIADOR 2"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs font-semibold uppercase text-slate-900 placeholder:font-normal placeholder:normal-case placeholder:text-slate-400 focus:bg-white dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                  />
+                </div>
+
+                {/* Medium Type + Disk Number */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                      Medio de Recepción *
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-slate-200 bg-slate-100/70 p-1 dark:border-zinc-800 dark:bg-zinc-950">
+                      <button
+                        type="button"
+                        onClick={() => setFormEsSatelite(false)}
+                        className={`inline-flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-bold transition-all ${
+                          !formEsSatelite
+                            ? "bg-white text-slate-900 shadow-xs dark:bg-zinc-800 dark:text-zinc-100"
+                            : "text-slate-500 hover:text-slate-800 dark:text-zinc-400"
+                        }`}
+                      >
+                        <HardDrive className="h-3.5 w-3.5 text-rose-600" />
+                        <span>Disco Físico</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormEsSatelite(true);
+                          setFormNumeroDisco("");
+                        }}
+                        className={`inline-flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-bold transition-all ${
+                          formEsSatelite
+                            ? "bg-sky-600 text-white shadow-xs"
+                            : "text-slate-500 hover:text-slate-800 dark:text-zinc-400"
+                        }`}
+                      >
+                        <Radio className="h-3.5 w-3.5" />
+                        <span>Satélite</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                      {formEsSatelite ? "Identificador Satelital" : "Número de Disco *"}
+                    </label>
+                    <input
+                      type="text"
+                      disabled={formEsSatelite}
+                      value={formEsSatelite ? "Transmisión Satélite" : formNumeroDisco}
+                      onChange={(e) => setFormNumeroDisco(e.target.value.replace(/[^0-9]/g, ""))}
+                      placeholder="Ej: 14"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 font-mono text-xs text-slate-900 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                    />
+                  </div>
+                </div>
+
+                {/* Location Grid */}
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                    Ubicación de Ingesta (TMS o Sala) *
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ubicacionOptions.map((loc) => {
+                      const active = formUbicacion === loc;
+                      return (
+                        <button
+                          key={loc}
+                          type="button"
+                          onClick={() => setFormUbicacion(loc)}
+                          className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all ${
+                            active
+                              ? "border-rose-600 bg-rose-600 text-white shadow-xs"
+                              : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400"
+                          }`}
                         >
-                          <Text style={styles.dropdownItemText}>{nombre}</Text>
-                        </TouchableOpacity>
+                          {loc}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Languages (SUB / CAS) */}
+                <div>
+                  <label className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                    <Languages className="h-3.5 w-3.5 text-slate-400" />
+                    <span>Versiones de Idioma Incluidas</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      {
+                        label: "SUB (Subtitulada)",
+                        checked: formSub,
+                        onChange: setFormSub,
+                      },
+                      {
+                        label: "CAS (Castellano)",
+                        checked: formCas,
+                        onChange: setFormCas,
+                      },
+                    ].map((lang) => (
+                      <button
+                        key={lang.label}
+                        type="button"
+                        onClick={() => lang.onChange(!lang.checked)}
+                        className={`flex items-center justify-between rounded-xl border p-2.5 text-left text-xs font-bold transition-all ${
+                          lang.checked
+                            ? "border-indigo-500/70 bg-indigo-50/70 text-indigo-900 dark:border-indigo-500/60 dark:bg-indigo-950/40 dark:text-indigo-200"
+                            : "border-slate-200 bg-slate-50/50 text-slate-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-500"
+                        }`}
+                      >
+                        <span>{lang.label}</span>
+                        <CheckCircle2
+                          className={`h-4 w-4 ${
+                            lang.checked ? "text-indigo-600 dark:text-indigo-400" : "opacity-30"
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Operator Name + Quick Chips */}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                    Cargado por (Operador) *
+                  </label>
+                  <input
+                    type="text"
+                    value={formCargadoPor}
+                    onChange={(e) => setFormCargadoPor(e.target.value)}
+                    placeholder="Nombre del operador"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                  />
+
+                  {nombresCargadores.length > 0 && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] font-semibold text-slate-400">
+                        Recientes:
+                      </span>
+                      {nombresCargadores.map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => setFormCargadoPor(n)}
+                          className={`rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                            formCargadoPor === n
+                              ? "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300"
+                              : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400"
+                          }`}
+                        >
+                          {n}
+                        </button>
                       ))}
-                  </View>
-                )}
-              </View>
-            </View>
+                    </div>
+                  )}
+                </div>
 
-            {/* SUB / CAS toggles */}
-            <View style={styles.toggleRow}>
-              <View style={styles.toggleItem}>
-                <Switch value={formSub} onValueChange={setFormSub} />
-                <Text style={styles.toggleLabel}>SUB</Text>
-              </View>
-              <View style={styles.toggleItem}>
-                <Switch value={formCas} onValueChange={setFormCas} />
-                <Text style={styles.toggleLabel}>CAS</Text>
-              </View>
-            </View>
-
-            {/* Actions */}
-            <View style={styles.modalActionsModern}>
-              <TouchableOpacity
-                style={[styles.cancelBtnModern, saving && styles.cancelBtnDisabled]}
-                onPress={() => setShowForm(false)}
-                disabled={saving}
-              >
-                <Text style={styles.cancelBtnTextModern}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.saveBtnModern, saving && styles.saveBtnDisabled]}
-                onPress={addDcp}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.saveBtnTextModern}>Guardar</Text>
+                {formError && (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-400">
+                    {formError}
+                  </div>
                 )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-      </View>
+
+                <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3 dark:border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowForm(false)}
+                    disabled={saving}
+                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50"
+                  >
+                    {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    <span>{editingId ? "Guardar Cambios" : "Registrar DCP"}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </main>
     </>
   );
 }
-
-/* ── styles ── */
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "transparent",
-    position: "relative",
-    minHeight: 0,
-  },
-
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  loadingText: {
-    color: COLORS.muted,
-    marginTop: 8,
-  },
-
-  gridContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: 8,
-    alignItems: "flex-start",
-  },
-
-  listContent: {
-    paddingTop: 16,
-    paddingBottom: 100,
-  },
-  /* ── DCP Card ── */
-  dcpCardOuter: {
-  },
-  dcpCard: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: THEME.radius.lg,
-    overflow: "hidden",
-    flexDirection: "row",
-    ...Platform.select({
-      web: {
-        ...THEME.shadow.web,
-        transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-      } as any,
-      default: THEME.shadow.soft,
-    }),
-  },
-  dcpCardHovered: {
-    ...Platform.select({
-      web: {
-        transform: [{ translateY: -2 }],
-        boxShadow: "0 12px 20px -8px rgba(0, 0, 0, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.05)",
-      } as any,
-    }),
-  },
-  dcpCardRetired: {
-    opacity: 0.75,
-  },
-  dcpCardAccent: {
-    width: 4,
-    backgroundColor: COLORS.primary,
-  },
-  dcpCardBody: {
-    flex: 1,
-    padding: THEME.spacing.lg,
-  },
-
-  cardHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 36,
-    marginBottom: THEME.spacing.sm,
-    position: "relative",
-  },
-
-  dcpTitle: {
-    flex: 1,
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: "800",
-    lineHeight: 22,
-    textAlign: "center",
-  },
-  dcpTitle2: {
-    flex: 1,
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: "800",
-    lineHeight: 22,
-    textAlign: "center",
-  },
-
-  metaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 6,
-  },
-
-  metaRowCenter: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 8,
-    justifyContent: "center",
-  },
-
-  metaChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.primarySoft,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-  },
-  metaChipText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.primary,
-  },
-
-  metaChipSmall: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  metaChipSmallText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-
-  metaChipDate: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(22, 163, 74, 0.08)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-  },
-  metaChipDateText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#16A34A",
-  },
-
-  dcpMeta: {
-    color: COLORS.muted,
-    marginTop: 4,
-    fontSize: THEME.fontSize.sm,
-  },
-
-  dcpMetaCenter: {
-    color: COLORS.muted,
-    marginTop: 6,
-    fontSize: THEME.fontSize.sm - 1,
-    textAlign: "center",
-  },
-
-  retireBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.primary,
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginTop: 12,
-    alignSelf: "center",
-    ...Platform.select({
-      web: {
-        cursor: "pointer",
-        transition: "opacity 0.2s ease",
-      } as any,
-    }),
-  },
-  retireBtnText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 12,
-  },
-
-  /* ── More button ── */
-  moreBtn: {
-    position: "absolute",
-    right: 0,
-    top: -4,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 10,
-    ...Platform.select({
-      web: {
-        cursor: "pointer",
-        transition: "all 0.2s ease",
-      } as any,
-    }),
-  },
-  moreBtnText: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: "700",
-    lineHeight: 16,
-  },
-
-  /* ── Historial toggle ── */
-  historialToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 16,
-    marginTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  historialToggleText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: COLORS.primary,
-  },
-  historialSection: {
-    paddingTop: 8,
-  },
-
-  /* ── Historial search ── */
-  historialSearchWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: THEME.spacing.md,
-    borderRadius: 14,
-    paddingHorizontal: THEME.spacing.md,
-    ...Platform.select({
-      web: {
-        transition: "border-color 0.2s ease",
-      } as any,
-    }),
-  },
-  historialSearchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    color: COLORS.text,
-    fontSize: 15,
-  },
-  historialClearBtn: {
-    paddingVertical: THEME.spacing.xs,
-    paddingHorizontal: THEME.spacing.sm,
-    borderRadius: THEME.radius.sm,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.card,
-  },
-  historialClearBtnText: {
-    color: COLORS.text,
-    fontWeight: "700",
-  },
-  historialCount: {
-    marginBottom: THEME.spacing.sm,
-    color: COLORS.muted,
-    fontSize: THEME.fontSize.sm,
-    textAlign: "center",
-  },
-  loadMoreBtn: {
-    backgroundColor: COLORS.primary,
-    borderRadius: THEME.radius.full,
-    paddingVertical: THEME.spacing.md,
-    paddingHorizontal: THEME.spacing.lg,
-    alignSelf: "center",
-    marginTop: 10,
-    ...THEME.shadow.soft,
-  },
-  loadMoreText: {
-    color: "#fff",
-    fontWeight: "800",
-  },
-
-  /* ── FAB ── */
-  fabBR: {
-    position: "absolute",
-    right: THEME.spacing.lg,
-    bottom: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    ...THEME.shadow.web,
-    zIndex: 50,
-    elevation: 10,
-  },
-
-  /* ── Menus & modals ── */
-  menuBackdrop: {
-    flex: 1,
-    backgroundColor: "transparent",
-  },
-  menuCard: {
-    width: 170,
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
-  },
-  menuAction: {
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  menuActionText: {
-    color: COLORS.text,
-    fontWeight: "700",
-  },
-  menuDeleteText: {
-    color: "#dc2626",
-    fontWeight: "700",
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: THEME.spacing.lg,
-  },
-
-  confirmCard: {
-    width: "100%",
-    maxWidth: 420,
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: THEME.spacing.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...THEME.shadow.web,
-  },
-
-  modalTitle: {
-    fontSize: THEME.fontSize.lg,
-    fontWeight: "800",
-    color: COLORS.text,
-    textAlign: "center",
-    marginBottom: THEME.spacing.sm,
-  },
-  confirmText: {
-    color: COLORS.text,
-    textAlign: "center",
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-
-  modalCardModern: {
-    width: "100%",
-    maxWidth: 520,
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-  },
-  modalTitleModern: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: COLORS.text,
-  },
-  modalSubtitleModern: {
-    marginTop: 6,
-    marginBottom: 18,
-    fontSize: 14,
-    lineHeight: 20,
-    color: COLORS.muted,
-  },
-
-  fieldGroup: {
-    marginBottom: 14,
-  },
-  fieldLabel: {
-    marginBottom: 7,
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-  modalInputModern: {
-    minHeight: 48,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: COLORS.bg,
-    color: COLORS.text,
-    fontSize: 15,
-  },
-
-  /* ── Dropdown (for ubicación & nombres) ── */
-  dropdownTrigger: {
-    minHeight: 48,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: COLORS.bg,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  dropdownTriggerText: {
-    color: COLORS.text,
-    fontSize: 15,
-  },
-  dropdownList: {
-    marginTop: 4,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    backgroundColor: COLORS.card,
-    maxHeight: 200,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  dropdownItem: {
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  dropdownItemActive: {
-    backgroundColor: COLORS.primarySoft,
-  },
-  dropdownItemText: {
-    fontSize: 14,
-    color: COLORS.text,
-    fontWeight: "600",
-  },
-  dropdownItemTextActive: {
-    color: COLORS.primary,
-    fontWeight: "700",
-  },
-
-  /* ── SUB / CAS toggles ── */
-  toggleRow: {
-    flexDirection: "row",
-    gap: 24,
-    marginBottom: 14,
-    marginTop: 4,
-  },
-  toggleItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  toggleLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-
-  modalActionsModern: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
-    marginTop: 14,
-  },
-
-  /* ── Retire modal actions (column layout) ── */
-  retireActionsCol: {
-    gap: 10,
-    marginTop: 14,
-  },
-  retireActionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 18,
-  },
-  retireActionBtnText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 14,
-  },
-  cancelBtnModern: {
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: COLORS.border,
-  },
-  cancelBtnDisabled: {
-    opacity: 0.5,
-  },
-  cancelBtnTextModern: {
-    color: COLORS.text,
-    fontWeight: "700",
-  },
-  saveBtnModern: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: COLORS.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 100,
-  },
-  saveBtnDisabled: {
-    opacity: 0.7,
-  },
-  saveBtnTextModern: {
-    color: "#FFFFFF",
-    fontWeight: "800",
-  },
-  deleteBtnModern: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: "#dc2626",
-  },
-  deleteBtnTextModern: {
-    color: "#FFFFFF",
-    fontWeight: "800",
-  },
-
-  emptyText: {
-    color: COLORS.muted,
-    textAlign: "center",
-    marginTop: 24,
-  },
-});

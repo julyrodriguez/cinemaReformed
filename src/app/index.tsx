@@ -159,10 +159,10 @@ export default function Home() {
 
   const [isSidebarPinned, setIsSidebarPinned] = useState<boolean>(() => {
     try {
-      const saved = window.localStorage.getItem("sidebar_pinned");
-      return saved === null ? true : saved === "true";
+      const saved = window.localStorage.getItem("sidebar_pinned_v2");
+      return saved === null ? false : saved === "true";
     } catch {
-      return true;
+      return false;
     }
   });
   const [isHovered, setIsHovered] = useState(false);
@@ -184,7 +184,7 @@ export default function Home() {
     setIsSidebarPinned((prev) => {
       const next = !prev;
       try {
-        window.localStorage.setItem("sidebar_pinned", String(next));
+        window.localStorage.setItem("sidebar_pinned_v2", String(next));
       } catch {
         // ignore
       }
@@ -996,16 +996,28 @@ export default function Home() {
         pathname="/"
       />
       <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-slate-900 dark:bg-zinc-950 dark:text-zinc-100">
-        {/* Desktop Sidebar */}
+        {/* Desktop Sidebar (Hidden/Compact Rail by default, expands on hover or pin) */}
         {!isMobile && (
-          <aside
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-            style={{ width: sidebarExpanded ? 252 : 68 }}
-            className="relative z-40 h-full shrink-0 border-r border-slate-200/80 bg-white transition-[width] duration-200 ease-out dark:border-zinc-800/80 dark:bg-zinc-950"
+          <div
+            className="relative z-40 h-full shrink-0"
+            style={{ width: isSidebarPinned ? 232 : 54 }}
           >
-            {renderSidebarContent(false)}
-          </aside>
+            <aside
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
+              style={{
+                width: sidebarExpanded ? 232 : 54,
+                transition: "width 220ms cubic-bezier(0.32, 0.72, 0, 1), box-shadow 220ms cubic-bezier(0.23, 1, 0.32, 1)",
+              }}
+              className={`absolute inset-y-0 left-0 h-full border-r border-slate-200/80 bg-white/95 backdrop-blur-md dark:border-zinc-800/80 dark:bg-zinc-950/95 ${
+                !isSidebarPinned && isHovered
+                  ? "shadow-2xl shadow-slate-900/15 dark:shadow-black/60"
+                  : ""
+              }`}
+            >
+              {renderSidebarContent(false)}
+            </aside>
+          </div>
         )}
 
         {/* Mobile Drawer Backdrop & Panel */}

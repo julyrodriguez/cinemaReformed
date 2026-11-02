@@ -100,6 +100,16 @@ html.dark {
   box-sizing: border-box;
 }
 
+html {
+  font-size: 13.5px;
+}
+
+@media (max-width: 768px) {
+  html {
+    font-size: 14px;
+  }
+}
+
 html,
 body,
 #root {
@@ -114,10 +124,82 @@ body,
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Keyframes & Motion System (Emil Kowalski curves) */
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes modalEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes backdropEnter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes popEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-card-in {
+  animation: cardEnter 240ms var(--ease-out) both;
+}
+
+.animate-modal-in {
+  animation: modalEnter 210ms var(--ease-out) both;
+}
+
+.animate-backdrop-in {
+  animation: backdropEnter 160ms ease-out both;
+}
+
+.animate-pop-in {
+  animation: popEnter 160ms var(--ease-out) both;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hover-lift {
+    transition: transform 180ms var(--ease-out), box-shadow 180ms var(--ease-out), border-color 180ms ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px -6px rgba(15, 23, 42, 0.08), 0 4px 10px -4px rgba(15, 23, 42, 0.04);
+  }
+  html.dark .hover-lift:hover {
+    box-shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.45);
+  }
+}
+
 /* Subtle minimalist scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -164,20 +246,21 @@ html.dark textarea:focus {
 /* Tactile button feedback */
 button,
 [role="button"] {
-  transition: transform 140ms var(--ease-out), background-color 150ms ease, border-color 150ms ease, opacity 150ms ease;
+  transition: transform 130ms var(--ease-out), background-color 150ms ease, border-color 150ms ease, opacity 150ms ease, box-shadow 150ms var(--ease-out);
 }
 
 button:active:not(:disabled),
 [role="button"]:active {
-  transform: scale(0.985);
+  transform: scale(0.97);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  .animate-card-in,
+  .animate-modal-in,
+  .animate-pop-in {
+    animation: backdropEnter 150ms ease both !important;
+  }
+  .hover-lift:hover {
+    transform: none !important;
   }
 }
