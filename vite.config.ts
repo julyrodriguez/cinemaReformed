@@ -3,15 +3,27 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), ['VITE_', 'EXPO_PUBLIC_']);
+  const loadedEnv = loadEnv(mode, process.cwd(), ['VITE_', 'EXPO_PUBLIC_']);
+  const env: Record<string, string> = { ...loadedEnv };
+
+  for (const [k, v] of Object.entries(process.env)) {
+    if ((k.startsWith('EXPO_PUBLIC_') || k.startsWith('VITE_')) && typeof v === 'string') {
+      env[k] = v;
+    }
+  }
+
+  const defineMap: Record<string, string> = {
+    'process.env': JSON.stringify(env),
+    global: 'window',
+  };
+  for (const [k, v] of Object.entries(env)) {
+    defineMap[`process.env.${k}`] = JSON.stringify(v);
+  }
 
   return {
     plugins: [react()],
     envPrefix: ['VITE_', 'EXPO_PUBLIC_'],
-    define: {
-      'process.env': JSON.stringify(env),
-      global: 'window',
-    },
+    define: defineMap,
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

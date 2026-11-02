@@ -15,10 +15,15 @@ import {
   Sun,
 } from "lucide-react";
 
-import { APP_AUTH_DOMAIN, auth } from "../lib/firebaseConfig";
+import { APP_AUTH_DOMAIN, auth, firebaseConfig } from "../lib/firebaseConfig";
 import { applyTheme, getSavedTheme, saveTheme } from "../lib/theme";
 import { sanitizeCineId } from "@/shared/utils";
 import SEOHead from "@/components/SEOHead";
+
+function extractCleanCineId(rawInput: string): string {
+  const base = String(rawInput ?? "").trim().split("@")[0] ?? "";
+  return sanitizeCineId(base);
+}
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -30,7 +35,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
 
-  const cineIdPreview = useMemo(() => sanitizeCineId(username), [username]);
+  const cineIdPreview = useMemo(() => extractCleanCineId(username), [username]);
 
   useEffect(() => {
     const saved = getSavedTheme();
@@ -54,10 +59,20 @@ export default function Login() {
 
   const handleSignIn = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    const cleanUser = sanitizeCineId(username);
+    const cleanUser = extractCleanCineId(username);
     const email = `${cleanUser}@${APP_AUTH_DOMAIN}`;
 
     setError(null);
+
+    if (
+      !firebaseConfig.apiKey ||
+      firebaseConfig.apiKey === "AIzaSyDummyApiKeyForBuild1234567890123"
+    ) {
+      setError(
+        "Faltan aplicar las variables de entorno en el build (EXPO_PUBLIC_FIREBASE_API_KEY). En Vercel, tocá 'Redeploy' en Deployments para que tome las variables recién cargadas."
+      );
+      return;
+    }
 
     if (!cleanUser || !pass.trim()) {
       setError("Completá el usuario del complejo y la contraseña.");
@@ -67,7 +82,7 @@ export default function Login() {
     try {
       setLoading(true);
       await signInWithEmailAndPassword(auth, email, pass);
-      const displayName = username.trim() || cleanUser;
+      const displayName = username.trim().split("@")[0] || cleanUser;
       await AsyncStorage.multiSet([
         ["displayName", displayName],
         ["cineId", cleanUser],
@@ -83,7 +98,11 @@ export default function Login() {
           break;
         case "auth/wrong-password":
         case "auth/invalid-credential":
-          msg = "Usuario o contraseña incorrectos.";
+          msg = `Usuario (${email}) o contraseña incorrectos.`;
+          break;
+        case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
+        case "auth/invalid-api-key":
+          msg = "API Key de Firebase inválida o no aplicada en el build de Vercel (hacé Redeploy).";
           break;
         case "auth/too-many-requests":
           msg = "Demasiados intentos fallidos. Aguardá unos minutos.";
