@@ -1,0 +1,5459 @@
+// app/screens/ProgramacionProyeccionScreen.tsx
+
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
+  Image,
+} from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { doc, onSnapshot, getDoc, collection } from "@/lib/dbService";
+import { db, CINES_COLLECTION, functions } from "../../lib/firebaseConfig";
+import { httpsCallable } from "@/lib/dbService";
+import { useAuthUser } from "../../lib/useAuthUser";
+import { COLORS, THEME } from "../../lib/theme";
+import { WeekdayKey } from "../../lib/programacion/types";
+import dayjs from "dayjs";
+import { toDate } from "@/shared/utils";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import { mockShowtimesData } from "./mockShowtimes";
+import { getRoomLayout, SeatInfo, RoomLayout, FirestoreSalaLayout } from "./ControlSalasScreen";
+import { getCineConfig } from "../../lib/cineConfig";
+import { findMatchingCredito, calculateCreditoClockTime } from "../../lib/programacion/creditosMatcher";
+
+function isMarketingTag(tag: string): boolean {
+  if (!tag) return true;
+  const t = tag.toUpperCase().trim();
+  return t.includes("CONTENIDO ALTERNATIVO") || 
+         t.includes("CON RESTRICCIONES") || 
+         t.includes("SIN PROMOCIONES") ||
+         t === "";
+}
+
+// Types
+interface DailyShow {
+  sala: number;
+  pelicula: string;
+  calificacion: string;
+  inicio: string;
+  fin: string;
+  sortInicio: number;
+  sortFin: number;
+
+  // Credits info
+  creditosHoraReloj?: string;
+  horaCreditoOriginal?: string;
+
+  // API / Simulation Mode Properties
+  isSimulated?: boolean;
+  sessionId?: string;
+  sessionDateTime?: string;
+  sessionFormat?: string;
+  language?: string;
+  premiere?: boolean;
+  corporateId?: string;
+  movieId?: string;
+  occupiedSeats?: string[];
+  
+  capacity?: number;
+  availableSeats?: number;
+  soldSeats?: number;
+  
+  hasDbox?: boolean;
+  normalCapacity?: number;
+  normalAvailable?: number;
+  normalSold?: number;
+  dboxCapacity?: number;
+  dboxAvailable?: number;
+  dboxSold?: number;
+
+  runTime?: number;
+  filmPersons?: any[];
+  posterUrl?: string;
+
+  // Event Properties
+  isEvent?: boolean;
+  desayuno?: boolean;
+  combo?: boolean;
+}
+
+interface SavedWeekly {
+  startDate: string;
+  savedAt: string;
+  weeklyRows: any[];
+}
+
+const DAYS_OF_WEEK: { key: WeekdayKey; label: string }[] = [
+  { key: "jueves", label: "Jueves" },
+  { key: "viernes", label: "Viernes" },
+  { key: "sabado", label: "Sábado" },
+  { key: "domingo", label: "Domingo" },
+  { key: "lunes", label: "Lunes" },
+  { key: "martes", label: "Martes" },
+  { key: "miercoles", label: "Miércoles" },
+];
+
+const DAY_CYCLE_INDEX: Record<WeekdayKey, number> = {
+  jueves: 0,
+  viernes: 1,
+  sabado: 2,
+  domingo: 3,
+  lunes: 4,
+  martes: 5,
+  miercoles: 6,
+};
+
+const MINUTE_WIDTH = 2; // px per minute
+const HOUR_WIDTH = 60 * MINUTE_WIDTH; // 120px per hour
+const ROW_HEIGHT = 54; // height of each room row (perfect middle-ground)
+const HEADER_HEIGHT = 34; // height of timeline hours header
+const ROOM_COL_WIDTH = 72; // width of rooms left column
+const SCROLLBAR_HEIGHT = Platform.OS === "web" ? 16 : 0;
+
+// Helper to convert time "HH:MM" to minutes from midnight
+function timeToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const [h, m] = timeStr.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+// Helper to add minutes to a time string
+function addMinutesToTimeStr(timeStr: string, minsToAdd: number): string {
+  if (!timeStr) return "";
+  const [h, m] = timeStr.split(":").map(Number);
+  const totalMins = (h * 60 + m + minsToAdd) % 1440;
+  const newH = Math.floor(totalMins / 60);
+  const newM = totalMins % 60;
+  return `${String(newH).padStart(2, "0")}:${String(newM).padStart(2, "0")}`;
+}
+
+// Helper to format minutes from 6 AM to time "HH:MM"
+function formatMinutesToTime(minsFrom6AM: number): string {
+  const totalMins = (6 * 60 + minsFrom6AM) % 1440;
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+// Helper to get current weekday key
+function getCurrentWeekdayKey(): WeekdayKey {
+  let now = dayjs();
+  // Si es antes de las 6:00 AM, seguimos en el día cinematográfico anterior
+  if (now.hour() < 6) {
+    now = now.subtract(1, "day");
+  }
+  const dayNum = now.day(); // 0 = Sunday, 1 = Monday, etc.
+  const map: Record<number, WeekdayKey> = {
+    0: "domingo",
+    1: "lunes",
+    2: "martes",
+    3: "miercoles",
+    4: "jueves",
+    5: "viernes",
+    6: "sabado",
+  };
+  return map[dayNum];
+}
+
+// Helper to get cinematic weekday key for a specific Date
+function getCinematicWeekdayKey(date: Date): WeekdayKey {
+  let d = dayjs(date);
+  // Si es antes de las 6:00 AM, seguimos en el día cinematográfico anterior
+  if (d.hour() < 6) {
+    d = d.subtract(1, "day");
+  }
+  const dayNum = d.day();
+  const map: Record<number, WeekdayKey> = {
+    0: "domingo",
+    1: "lunes",
+    2: "martes",
+    3: "miercoles",
+    4: "jueves",
+    5: "viernes",
+    6: "sabado",
+  };
+  return map[dayNum];
+}
+
+// Helper to get current time in minutes from 6 AM
+function getCurrentTimeMins(): number {
+  const now = dayjs();
+  const h = now.hour();
+  const m = now.minute();
+  const minsFromMidnight = h * 60 + m;
+  return minsFromMidnight >= 360 ? minsFromMidnight - 360 : minsFromMidnight + 1440 - 360;
+}
+
+// Map user's cineId to BFF API theater ID
+function getTheaterId(cineId: string): string {
+  const mapping: Record<string, string> = {
+    "abasto": "103",
+    "parquebrown": "2016",
+  };
+  return mapping[cineId.toLowerCase()] || "103"; // fallback to Abasto (103)
+}
+
+// Get start of movie week (Thursday) for a given date in yyyy-mm-dd
+function getMovieWeekStart(date: Date): string {
+  const localDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
+  if (localDate.getUTCHours() < 6) {
+    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  }
+  const dayNum = localDate.getUTCDay();
+  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
+  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  const yyyy = thurDate.getUTCFullYear();
+  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(thurDate.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Get start of movie week (Thursday) for the current date
+function getMovieWeekStartForNow(): string {
+  const localDate = new Date(Date.now() - (3 * 60 * 60 * 1000));
+  if (localDate.getUTCHours() < 6) {
+    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  }
+  const dayNum = localDate.getUTCDay();
+  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
+  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  const yyyy = thurDate.getUTCFullYear();
+  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(thurDate.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Format week start date to range label, e.g., "Semana del 25/6 a 01/7"
+function formatWeekRange(weekStart: string): string {
+  if (!weekStart) return "";
+  const [y, m, d] = weekStart.split('-').map(Number);
+  const thur = new Date(Date.UTC(y, m - 1, d));
+  const wed = new Date(thur.getTime() + 6 * 24 * 60 * 60 * 1000);
+  
+  const thurD = thur.getUTCDate();
+  const thurM = thur.getUTCMonth() + 1;
+  const wedD = String(wed.getUTCDate()).padStart(2, '0');
+  const wedM = wed.getUTCMonth() + 1;
+  
+  return `Semana del ${thurD}/${thurM} a ${wedD}/${wedM}`;
+}
+
+// Generate deterministic colors for each movie title
+function getMovieColor(title: string) {
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = title.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 75%, 38%)`;
+}
+
+export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: boolean }) {
+  const { cineId } = useAuthUser();
+  const [loading, setLoading] = useState(true);
+  const [salasCount, setSalasCount] = useState<number>(12);
+
+  // Load cinema configuration (salas count)
+  useEffect(() => {
+    if (!cineId) return;
+
+    getCineConfig(cineId)
+      .then((cfg) => {
+        if (cfg?.salasCount && Number.isFinite(cfg.salasCount) && cfg.salasCount > 0) {
+          setSalasCount(Math.floor(cfg.salasCount));
+        }
+      })
+      .catch((e) => console.error("Error loading cine config in ProgramacionProyeccionScreen:", e));
+  }, [cineId]);
+  const [savedWeekly, setSavedWeekly] = useState<SavedWeekly | null>(null);
+  const [eventos, setEventos] = useState<any[]>([]);
+  const [selectedDay, setSelectedDay] = useState<WeekdayKey>(getCurrentWeekdayKey());
+  const [selectedShow, setSelectedShow] = useState<DailyShow | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+
+  const [currentTimeMins, setCurrentTimeMins] = useState(getCurrentTimeMins());
+  const [scrollEl, setScrollEl] = useState<any>(null);
+  const headerScrollRef = useRef<ScrollView>(null);
+  const timelineScrollRef = useRef<ScrollView>(null);
+  const verticalScrollRef = useRef<ScrollView>(null);
+  const cardYOffsets = useRef<Record<number, number>>({});
+  const listContainerY = useRef(0);
+  const lastScrolledDay = useRef<string | null>(null);
+
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isMobile = windowWidth < 768;
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  const isCollapsed = isMobile && isScrolled;
+  const currentRoomColWidth = isCollapsed ? 34 : ROOM_COL_WIDTH;
+
+  // API Data Integration states
+  const useApiData = true;
+  const [apiData, setApiData] = useState<any[] | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [selectedWeekStart, setSelectedWeekStart] = useState<string>("");
+  const [showStatsPanel, setShowStatsPanel] = useState(false);
+  const [statsSubTab, setStatsSubTab] = useState<"todo" | "resumen" | "peliculas" | "dias" | "salas" | "alertas">("todo");
+  const [adjustShowtimes, setAdjustShowtimes] = useState<boolean>(false);
+
+  // Seat Map Integration
+  const [seatMapData, setSeatMapData] = useState<any | null>(null);
+  const [loadingSeatMap, setLoadingSeatMap] = useState<boolean>(false);
+  const [seatMapError, setSeatMapError] = useState<string | null>(null);
+  const [showSeatMap, setShowSeatMap] = useState<boolean>(false);
+
+  const [activeSalaLayout, setActiveSalaLayout] = useState<RoomLayout | null>(null);
+
+  useEffect(() => {
+    if (!cineId || !selectedShow) {
+      setActiveSalaLayout(null);
+      return;
+    }
+
+    const salaId = selectedShow.sala;
+    const ref = doc(db, CINES_COLLECTION, cineId, "salas_layouts", String(salaId));
+    
+    const unsubscribe = onSnapshot(ref, (snapshot: any) => {
+      if (snapshot.exists()) {
+        const dbLayout = snapshot.data() as FirestoreSalaLayout;
+        const seats: { [row: string]: SeatInfo[] } = {};
+        const customSeats = dbLayout.customSeats || {};
+        const customSeatNumbers = dbLayout.customSeatNumbers || {};
+        const invertSeats = dbLayout.invertSeats || false;
+
+        for (const row of dbLayout.rows) {
+          const rowSeats: SeatInfo[] = [];
+          for (let c = 1; c <= dbLayout.maxCol; c++) {
+            const key = `${row}-${c}`;
+            const exception = customSeats[key];
+            
+            let type: "seat" | "empty" = "seat";
+            let isDbox = false;
+
+            if (exception === "empty") {
+              type = "empty";
+            } else if (exception === "dbox") {
+              isDbox = true;
+            }
+
+            const customNum = customSeatNumbers[key];
+            const seatNumber = customNum !== undefined ? customNum : (invertSeats ? (dbLayout.maxCol - c + 1) : c);
+
+            rowSeats.push({
+              row,
+              number: seatNumber,
+              colIndex: c,
+              type,
+              isDbox,
+            });
+          }
+          seats[row] = rowSeats;
+        }
+
+        setActiveSalaLayout({
+          rows: dbLayout.rows,
+          maxCol: dbLayout.maxCol,
+          aisles: dbLayout.aisles || [],
+          rowAisles: dbLayout.rowAisles || [],
+          seats,
+          invertSeats,
+        });
+      } else {
+        setActiveSalaLayout(getRoomLayout(salaId));
+      }
+    }, (error: any) => {
+      console.error("Error listening to sala layout:", error);
+      setActiveSalaLayout(getRoomLayout(salaId));
+    });
+
+    return () => unsubscribe();
+  }, [cineId, selectedShow]);
+
+  useEffect(() => {
+    if (selectedShow && selectedShow.isSimulated) {
+      fetchSeatMap(selectedShow);
+    } else {
+      setShowSeatMap(false);
+      setSeatMapData(null);
+      setSeatMapError(null);
+    }
+  }, [selectedShow]);
+
+  const fetchSeatMap = async (show: DailyShow) => {
+    if (!show || !cineId) return;
+    setLoadingSeatMap(true);
+    setSeatMapError(null);
+    setSeatMapData(null);
+    setShowSeatMap(true);
+
+    // Intentar obtener el mapa de asientos en tiempo real a través de la API primero
+    try {
+      const getSeatMapFunc = httpsCallable(functions, "getCinemarkSeatMap");
+      const res = await getSeatMapFunc({
+        cinemaId: getTheaterId(cineId),
+        sessionId: show.sessionId,
+        corporateFilmId: show.corporateId || show.movieId || "",
+        sessionDateTime: show.sessionDateTime
+      });
+
+      const responseData = res.data as any;
+      if (responseData && responseData.Code === 0) {
+        setSeatMapData(responseData.Data);
+        setLoadingSeatMap(false);
+        return;
+      }
+    } catch (err: any) {
+      console.warn("Real-time seat map fetch failed, trying Firestore fallback:", err);
+    }
+
+    // Fallback a Firestore: si la llamada a la API falló (o devolvió código !== 0),
+    // intentamos usar los datos en caché (ya sea del show actual o del documento de showtimes en Firestore)
+    if (show.occupiedSeats && show.occupiedSeats.length > 0) {
+      setLoadingSeatMap(false);
+      return;
+    }
+
+    try {
+      const weekStart = getMovieWeekStart(new Date());
+      const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart || weekStart);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const sessions: any[] = snap.data()?.sessions || [];
+        const saved = sessions.find((s: any) => String(s.sessionId) === String(show.sessionId));
+        if (saved?.occupiedSeats && saved.occupiedSeats.length > 0) {
+          setSelectedShow(prev => prev ? { ...prev, occupiedSeats: saved.occupiedSeats } : prev);
+          setSeatMapError(null);
+          setLoadingSeatMap(false);
+          return;
+        }
+      }
+      setSeatMapError("No se pudo obtener el mapa de asientos en vivo ni el caché local.");
+    } catch (fsErr: any) {
+      console.error("Error reading fallback from Firestore:", fsErr);
+      setSeatMapError("Error al obtener el mapa de asientos.");
+    } finally {
+      setLoadingSeatMap(false);
+    }
+  };
+
+  const renderSeatGrid = (mapData: any) => {
+    const layout = activeSalaLayout;
+    if (!layout) {
+      return (
+        <View style={{ padding: 20, alignItems: "center" }}>
+          <ActivityIndicator size="small" color={COLORS.primary} />
+          <Text style={{ color: COLORS.textSoft, marginTop: 8 }}>Cargando plano de la sala...</Text>
+        </View>
+      );
+    }
+
+    // Build map of occupied seats from API mapData OR pre-saved database occupiedSeats
+    const occupiedMap = new Map<string, any>();
+    if (mapData && mapData.areas) {
+      mapData.areas.forEach((area: any) => {
+        if (!area.rows) return;
+        area.rows.forEach((row: any) => {
+          const rowId = row.rowPhysicalId;
+          if (!row.seats) return;
+          row.seats.forEach((seat: any) => {
+            occupiedMap.set(`${rowId}-${seat.seatNumber}`, seat);
+          });
+        });
+      });
+    } else if (selectedShow && selectedShow.occupiedSeats) {
+      selectedShow.occupiedSeats.forEach((seatKey: string) => {
+        occupiedMap.set(seatKey, { seatStatus: 1 });
+      });
+    }
+
+    return (
+      <View style={styles.seatGridContainer}>
+        {/* Screen Indicator */}
+        <View style={styles.screenIndicator}>
+          <View style={styles.screenLine} />
+          <Text style={styles.screenText}>PANTALLA</Text>
+        </View>
+
+        <ScrollView 
+          horizontal={true} 
+          showsHorizontalScrollIndicator={true}
+          bounces={true}
+          contentContainerStyle={styles.horizontalGridScroll}
+          style={{ alignSelf: "stretch" }}
+        >
+          <View style={{ flexDirection: "column" }}>
+            {layout.rows.map((rowName) => {
+              const rowSeats = layout.seats[rowName];
+              if (!rowSeats) return null;
+
+              // Slice row seats dynamically based on aisles definition
+              const sections: SeatInfo[][] = [];
+              let prev = 0;
+              layout.aisles.forEach((aisleIndex) => {
+                sections.push(rowSeats.slice(prev, aisleIndex));
+                prev = aisleIndex;
+              });
+              sections.push(rowSeats.slice(prev, layout.maxCol));
+
+              return (
+                <React.Fragment key={rowName}>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 3 }}>
+                    {/* Left row letter */}
+                    <Text style={styles.rowLabelText}>{rowName}</Text>
+
+                    {/* Render sections separated by aisles */}
+                    {sections.map((section, idx) => (
+                      <React.Fragment key={idx}>
+                        {idx > 0 && <View style={styles.aisleSpace} />}
+                        <View style={{ flexDirection: "row" }}>
+                          {section.map((seat) => {
+                            if (seat.type === "empty") {
+                              return <View key={`empty-${seat.row}-${seat.colIndex}`} style={styles.seatSpacer} />;
+                            }
+
+                            const seatKey = `${seat.row}-${seat.number}`;
+                            const stableKey = `${seat.row}-${seat.colIndex}`;
+                            const apiSeat = occupiedMap.get(seatKey);
+                            const isSold = apiSeat ? apiSeat.seatStatus !== 0 : false;
+                            
+                            let seatStyle = styles.seatAvailable;
+                            let iconName = "";
+
+                            if (isSold) {
+                              const status = apiSeat.seatStatus;
+                              if (status === 1 || status === 6 || status === 7) {
+                                seatStyle = styles.seatOccupied;
+                              } else if (status === 4) {
+                                seatStyle = styles.seatWheelchair;
+                                iconName = "wheelchair-accessibility";
+                              } else if (status === 5) {
+                                seatStyle = styles.seatAutoAssigned;
+                              } else if (status === 8) {
+                                seatStyle = styles.seatBlocked;
+                              } else {
+                                seatStyle = styles.seatOccupied; // default fallback if sold
+                              }
+                            }
+
+                            // D-BOX border highlight
+                            const isDbox = seat.isDbox;
+
+                            return (
+                              <View 
+                                key={stableKey} 
+                                style={[
+                                  styles.seatBase, 
+                                  seatStyle,
+                                  isDbox && styles.seatDboxBorder
+                                ]}
+                              >
+                                {iconName ? (
+                                  <MaterialCommunityIcons 
+                                    name={iconName as any} 
+                                    size={Platform.select({ web: 13, default: 10 })} 
+                                    color="#FFF" 
+                                  />
+                                ) : (
+                                  <Text style={styles.seatNumberText}>{seat.number}</Text>
+                                )}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </React.Fragment>
+                    ))}
+
+                    {/* Right row letter */}
+                    <Text style={[styles.rowLabelText, { marginLeft: 8 }]}>{rowName}</Text>
+                  </View>
+                  {layout.rowAisles?.includes(rowName) && <View style={{ height: 14 }} />}
+                </React.Fragment>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const handleGridScroll = (event: any) => {
+    const x = event.nativeEvent.contentOffset.x;
+    setIsScrolled(x > 5);
+    if (headerScrollRef.current) {
+      headerScrollRef.current.scrollTo({ x, animated: false });
+    }
+  };
+
+  const handleScrollRef = (el: any) => {
+    if (!el) return;
+    const scrollNode = el.getScrollableNode ? el.getScrollableNode() : el;
+    if (!scrollNode) return;
+    if (scrollNode !== scrollEl) {
+      setScrollEl(scrollNode);
+    }
+  };
+
+  // Subscribe to weekly programming saved in database under "Servicios Programacion"
+  useEffect(() => {
+    if (!cineId) {
+      setLoading(false);
+      return;
+    }
+
+    const docRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", "actual");
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snap: any) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setSavedWeekly({
+            startDate: data.startDate || "",
+            savedAt: data.savedAt || "",
+            weeklyRows: data.weeklyRows || [],
+          });
+        } else {
+          setSavedWeekly(null);
+        }
+        if (!useApiData) {
+          setLoading(false);
+        }
+      },
+      (error: any) => {
+        console.error("[ProgramacionProyeccionScreen] Error loading programming:", error);
+        if (!useApiData) {
+          setLoading(false);
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, [cineId, useApiData]);
+
+  // Subscribe to events saved in database
+  useEffect(() => {
+    if (!cineId) return;
+
+    const ref = collection(db, CINES_COLLECTION, cineId, "eventos");
+    const unsubscribe = onSnapshot(
+      ref,
+      (snapshot: any) => {
+        const list: any[] = [];
+        snapshot.forEach((docSnap: any) => {
+          list.push({
+            id: docSnap.id,
+            ...docSnap.data(),
+          });
+        });
+        setEventos(list);
+      },
+      (error: any) => {
+        console.error("[ProgramacionProyeccionScreen] Error loading eventos:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [cineId]);
+
+  // Subscribe to creditos saved in database
+  const [creditosList, setCreditosList] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!cineId) return;
+
+    const ref = collection(db, CINES_COLLECTION, cineId, "creditos");
+    const unsubscribe = onSnapshot(
+      ref,
+      (snapshot: any) => {
+        const list: any[] = [];
+        snapshot.forEach((docSnap: any) => {
+          list.push({
+            id: docSnap.id,
+            ...docSnap.data(),
+          });
+        });
+        setCreditosList(list);
+      },
+      (error: any) => {
+        console.error("[ProgramacionProyeccionScreen] Error loading creditos:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [cineId]);
+
+  // Fetch showtimes from Firestore or fallback to mock data
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    if (!useApiData || !cineId || !selectedWeekStart) return;
+
+    let isMounted = true;
+    setLoading(true);
+    setApiError(null);
+
+    const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart);
+
+    getDoc(docRef)
+      .then((snap) => {
+        if (isMounted) {
+          if (snap.exists()) {
+            const data = snap.data();
+            setApiData(data.sessions || []);
+            setApiError(null);
+          } else {
+            console.warn(`No showtimes document found in Firestore for week: ${selectedWeekStart}`);
+            // Fallback to local mock data so the app displays instantly
+            setApiData(mockShowtimesData.data || []);
+            setApiError("Sin sincronizar: Mostrando datos de simulación locales.");
+          }
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.error("Error reading showtimes from Firestore:", err);
+        if (isMounted) {
+          setApiData(mockShowtimesData.data || []);
+          setApiError("Error de lectura en Firestore. Usando datos de simulación locales.");
+          setLoading(false);
+        }
+      });
+
+    return () => { isMounted = false; };
+  }, [useApiData, cineId, selectedWeekStart]);
+
+  // Generate weeks list dynamically (4 past weeks + current + 5 future weeks for pre-sales)
+  const availableWeeks = useMemo(() => {
+    const list: string[] = [];
+    const currentThur = getMovieWeekStartForNow();
+    const [y, m, d] = currentThur.split('-').map(Number);
+    const thurDate = new Date(Date.UTC(y, m - 1, d));
+
+    for (let i = -4; i < 6; i++) {
+      const nextThur = new Date(thurDate.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+      const yyyy = nextThur.getUTCFullYear();
+      const mm = String(nextThur.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(nextThur.getUTCDate()).padStart(2, '0');
+      list.push(`${yyyy}-${mm}-${dd}`);
+    }
+    return list;
+  }, []);
+
+  // Set default selected week
+  useEffect(() => {
+    if (useApiData && !selectedWeekStart) {
+      setSelectedWeekStart(getMovieWeekStartForNow());
+    }
+  }, [useApiData, selectedWeekStart]);
+
+  const handleManualSync = async () => {
+    if (!cineId) return;
+    try {
+      setSyncing(true);
+      const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "/api";
+      const apiToken = process.env.EXPO_PUBLIC_API_TOKEN || "";
+      
+      const response = await fetch(`${API_BASE_URL}/showtimes/sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiToken}`
+        },
+        body: JSON.stringify({ cineId })
+      });
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || `Servidor retornó estado ${response.status}`);
+      }
+
+      // Reload active week from Firestore
+      const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        setApiData(data.sessions || []);
+        setApiError(null);
+      } else {
+        setApiData([]);
+        setApiError("Sincronización completa: No hay funciones programadas para esta semana.");
+      }
+      Alert.alert("Éxito", "Sincronización con Cinemark completada correctamente.");
+    } catch (err: any) {
+      console.error("Manual sync failed:", err);
+      Alert.alert("Error", "No se pudo sincronizar con Cinemark: " + (err.message || err));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const downloadWeeklyHtml = async () => {
+    if (!apiData || apiData.length === 0) {
+      Alert.alert("Sin datos", "No hay datos de programación cargados para esta semana.");
+      return;
+    }
+
+    try {
+      const daysOrdered: WeekdayKey[] = ["jueves", "viernes", "sabado", "domingo", "lunes", "martes", "miercoles"];
+      const DAY_OFFSETS: Record<WeekdayKey, number> = {
+        jueves: 0,
+        viernes: 1,
+        sabado: 2,
+        domingo: 3,
+        lunes: 4,
+        martes: 5,
+        miercoles: 6,
+      };
+      
+      const WEEKDAY_LABELS_ES: Record<WeekdayKey, string> = {
+        jueves: "Jueves",
+        viernes: "Viernes",
+        sabado: "Sábado",
+        domingo: "Domingo",
+        lunes: "Lunes",
+        martes: "Martes",
+        miercoles: "Miércoles",
+      };
+
+      const getDayDateLabelShort = (day: WeekdayKey): string => {
+        const label = WEEKDAY_LABELS_ES[day];
+        if (!selectedWeekStart) return label;
+        const offset = DAY_OFFSETS[day];
+        const [y, m, d] = selectedWeekStart.split("-").map(Number);
+        const start = new Date(Date.UTC(y, m - 1, d));
+        const dateObj = new Date(start.getTime() + offset * 24 * 60 * 60 * 1000);
+        const dd = String(dateObj.getUTCDate()).padStart(2, "0");
+        const mm = String(dateObj.getUTCMonth() + 1).padStart(2, "0");
+        return `${label} ${dd}/${mm}`;
+      };
+
+      // Build sessions array for JSON
+      const sessionsJson = apiData.map((session: any) => {
+        const utcDate = new Date(session.sessionDateTime);
+        const arDate = new Date(utcDate.getTime());
+        if (arDate.getUTCHours() < 6) {
+          arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
+        }
+
+        const dayNum = arDate.getUTCDay();
+        const dayMap: Record<number, WeekdayKey> = {
+          0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",
+          4: "jueves", 5: "viernes", 6: "sabado"
+        };
+        const sessionDay = dayMap[dayNum];
+
+        const hours = String(arDate.getUTCHours()).padStart(2, '0');
+        const mins = String(arDate.getUTCMinutes()).padStart(2, '0');
+        const inicio = `${hours}:${mins}`;
+
+        const durationMins = (session.runTime || 120) + 15;
+        const endMins = (arDate.getUTCHours() * 60 + arDate.getUTCMinutes() + durationMins) % 1440;
+        const endH = Math.floor(endMins / 60);
+        const endM = endMins % 60;
+        const fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+        const formatStr = (session.sessionFormat || "").toUpperCase().includes("3D") ? "3D" : "2D";
+        const langName = (session.language?.name || session.language || "").toUpperCase();
+        let langStr = "CAS";
+        if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
+          langStr = "SUB";
+        }
+
+        return {
+          movieName: session.movieName.toUpperCase(),
+          theaterRoom: Number(session.theaterRoom),
+          inicio,
+          fin,
+          format: `${formatStr} ${langStr}`,
+          dayKey: sessionDay,
+          sortVal: (() => {
+            const h = arDate.getUTCHours();
+            const m = arDate.getUTCMinutes();
+            return h < 6 ? (h + 24) * 60 + m : h * 60 + m;
+          })()
+        };
+      });
+
+      // Build days list for JSON
+      const daysList = daysOrdered.map(day => ({
+        key: day,
+        label: WEEKDAY_LABELS_ES[day],
+        labelShort: getDayDateLabelShort(day)
+      }));
+
+      const weekRangeLabel = formatWeekRange(selectedWeekStart);
+
+      const htmlTemplate = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Programación Semanal - ${weekRangeLabel}</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 15px;
+            padding: 0;
+            color: #333;
+            background-color: #fff;
+          }
+          .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #b30000;
+            padding-bottom: 10px;
+          }
+          h1 {
+            margin: 0;
+            color: #b30000;
+            font-size: 20px;
+          }
+          .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+          }
+          .btn {
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: bold;
+            border: 1px solid #ddd;
+            background-color: #f7f7f7;
+            cursor: pointer;
+            border-radius: 6px;
+            color: #333;
+          }
+          .btn-active {
+            background-color: #b30000;
+            color: #fff;
+            border-color: #b30000;
+          }
+          .btn-print {
+            background-color: #10B981;
+            color: #fff;
+            border-color: #10B981;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            table-layout: fixed;
+          }
+          th, td {
+            border: 1px solid #ddd;
+            padding: 6px;
+            vertical-align: top;
+            word-wrap: break-word;
+          }
+          th {
+            background-color: #f1f1f1;
+            font-weight: bold;
+            text-align: center;
+            font-size: 11.5px;
+          }
+          .row-header {
+            background-color: #fafafa;
+            font-weight: bold;
+            font-size: 12px;
+            color: #b30000;
+            vertical-align: middle;
+            text-align: center;
+          }
+          .show-entry {
+            margin-bottom: 6px;
+            padding-bottom: 6px;
+            border-bottom: 1px dashed #eee;
+            line-height: 1.3;
+          }
+          .show-entry:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+          }
+          .show-time {
+            font-weight: bold;
+            color: #000;
+            display: block;
+          }
+          .show-name {
+            color: #333;
+            display: block;
+          }
+          .show-detail {
+            font-size: 9.5px;
+            color: #666;
+          }
+          .format-tag {
+            font-size: 8.5px;
+            background-color: #e6f2ff;
+            color: #0066cc;
+            padding: 1px 3px;
+            border-radius: 3px;
+            font-weight: bold;
+            margin-left: 2px;
+          }
+          .format-tag-3d {
+            background-color: #ffebe6 !important;
+            color: #ff3b30 !important;
+            border: 1px solid #ffb3a7 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .show-name-3d {
+            font-weight: 800 !important;
+            color: #ff3b30 !important;
+          }
+          .room-prefix {
+            color: #b30000;
+            font-weight: bold;
+          }
+          @media print {
+            .header-bar {
+              display: none;
+            }
+            body {
+              margin: 0;
+            }
+            table {
+              font-size: 9.5px;
+            }
+            th {
+              font-size: 10px;
+              background-color: #f1f1f1 !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .format-tag {
+              background-color: #e6f2ff !important;
+              color: #0066cc !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header-bar">
+          <h1>PROGRAMACIÓN SEMANAL - Semana del <span id="week-label"></span></h1>
+          <div class="controls">
+            <button id="btn-sala" class="btn btn-active" onclick="setViewMode('sala')">Agrupar por Sala</button>
+            <button id="btn-pelicula" class="btn" onclick="setViewMode('pelicula')">Agrupar por Película</button>
+            <button class="btn btn-print" onclick="window.print()">Imprimir</button>
+          </div>
+        </div>
+
+        <table id="program-table">
+          <thead>
+            <tr id="table-headers">
+              <!-- Will be filled dynamically -->
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <!-- Will be filled dynamically -->
+          </tbody>
+        </table>
+
+        <script>
+          const weekLabelText = "${weekRangeLabel}";
+          const days = ${JSON.stringify(daysList)};
+          const sessions = ${JSON.stringify(sessionsJson)};
+          
+          document.getElementById("week-label").textContent = weekLabelText;
+          
+          let currentViewMode = 'sala';
+          
+          function setViewMode(mode) {
+            currentViewMode = mode;
+            document.getElementById("btn-sala").classList.toggle("btn-active", mode === 'sala');
+            document.getElementById("btn-pelicula").classList.toggle("btn-active", mode === 'pelicula');
+            renderTable();
+          }
+          
+          function renderTable() {
+            const headersTr = document.getElementById("table-headers");
+            const bodyTbody = document.getElementById("table-body");
+            
+            headersTr.innerHTML = "";
+            bodyTbody.innerHTML = "";
+            
+            const firstColHeader = currentViewMode === 'sala' ? 'SALA' : 'PELÍCULA';
+            headersTr.innerHTML += '<th style="width: 100px;">' + firstColHeader + '</th>';
+            
+            days.forEach(day => {
+              headersTr.innerHTML += '<th>' + day.labelShort + '</th>';
+            });
+            
+            if (currentViewMode === 'sala') {
+              const roomsSet = new Set();
+              sessions.forEach(s => roomsSet.add(s.theaterRoom));
+              const rooms = Array.from(roomsSet).sort((a, b) => a - b);
+              
+              rooms.forEach(room => {
+                let tr = document.createElement("tr");
+                tr.innerHTML += '<td class="row-header">SALA ' + room + '</td>';
+                
+                days.forEach(day => {
+                  const daySessions = sessions.filter(s => s.theaterRoom === room && s.dayKey === day.key)
+                                              .sort((a, b) => a.sortVal - b.sortVal);
+                  
+                  let td = document.createElement("td");
+                  if (daySessions.length === 0) {
+                    td.innerHTML = "-";
+                  } else {
+                    daySessions.forEach(show => {
+                      const is3D = show.format.includes("3D");
+                      const tagClass = is3D ? "format-tag format-tag-3d" : "format-tag";
+                      const nameClass = is3D ? "show-name show-name-3d" : "show-name";
+                      td.innerHTML += \`
+                        <div class="show-entry">
+                          <span class="show-time">\${show.inicio} - \${show.fin}</span>
+                          <span class="\${nameClass}">\${show.movieName}</span>
+                          <span class="show-detail"><span class="\${tagClass}">\${show.format}</span></span>
+                        </div>
+                      \`;
+                    });
+                  }
+                  tr.appendChild(td);
+                });
+                
+                bodyTbody.appendChild(tr);
+              });
+            } else {
+              const moviesSet = new Set();
+              sessions.forEach(s => moviesSet.add(s.movieName));
+              const movies = Array.from(moviesSet).sort();
+              
+              movies.forEach(movie => {
+                const isMovie3D = sessions.some(s => s.movieName === movie && s.format.includes("3D"));
+                const rowHeaderClass = isMovie3D ? "row-header show-name-3d" : "row-header";
+                let tr = document.createElement("tr");
+                tr.innerHTML += '<td class="' + rowHeaderClass + '" style="font-size: 11px; text-align: left; padding-left: 8px; vertical-align: middle;">' + movie + '</td>';
+                
+                days.forEach(day => {
+                  const daySessions = sessions.filter(s => s.movieName === movie && s.dayKey === day.key)
+                                              .sort((a, b) => a.sortVal - b.sortVal);
+                  
+                  let td = document.createElement("td");
+                  if (daySessions.length === 0) {
+                    td.innerHTML = "-";
+                  } else {
+                    daySessions.forEach(show => {
+                      const is3D = show.format.includes("3D");
+                      const tagClass = is3D ? "format-tag format-tag-3d" : "format-tag";
+                      td.innerHTML += \`
+                        <div class="show-entry">
+                          <span class="show-time">\${show.inicio} - \${show.fin}</span>
+                          <span class="show-detail">
+                            <span class="room-prefix">S\${show.theaterRoom}</span> 
+                            <span class="\${tagClass}">\${show.format}</span>
+                          </span>
+                        </div>
+                      \`;
+                    });
+                  }
+                  tr.appendChild(td);
+                });
+                
+                bodyTbody.appendChild(tr);
+              });
+            }
+          }
+          
+          renderTable();
+        </script>
+      </body>
+      </html>
+      `;
+
+      if (Platform.OS === "web") {
+        const newWindow = window.open();
+        if (newWindow) {
+          newWindow.document.write(htmlTemplate);
+          newWindow.document.close();
+        } else {
+          Alert.alert("Bloqueador de ventanas", "Por favor habilita las ventanas emergentes en tu navegador para ver la programación.");
+        }
+        return;
+      }
+
+      const fileUri = `${(FileSystem as any).cacheDirectory}programacion-semanal-${selectedWeekStart}.html`;
+      await FileSystem.writeAsStringAsync(fileUri, htmlTemplate, {
+        encoding: (FileSystem as any).EncodingType.UTF8,
+      });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: "text/html",
+          dialogTitle: "Ver Programación Semanal",
+        });
+      } else {
+        Alert.alert("Guardado", `HTML guardado en: ${fileUri}`);
+      }
+    } catch (err: any) {
+      console.error("Error al generar HTML:", err);
+      Alert.alert("Error", "No se pudo generar el archivo HTML.");
+    }
+  };
+
+  const prevTodayRef = useRef<WeekdayKey>(getCurrentWeekdayKey());
+
+  // Keep track of current time and automatically update day on roll-over (every 15 seconds)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTimeMins(getCurrentTimeMins());
+
+      const newToday = getCurrentWeekdayKey();
+      const oldToday = prevTodayRef.current;
+
+      if (newToday !== oldToday) {
+        prevTodayRef.current = newToday;
+        // Si el usuario está visualizando el día actual, actualizamos su vista al nuevo día
+        if (selectedDay === oldToday) {
+          setSelectedDay(newToday);
+        }
+      }
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [selectedDay]);
+
+
+
+  // Web Scroll setup: Custom scrollbar styles, class addition, and drag-to-scroll listeners
+  useEffect(() => {
+    if (Platform.OS !== "web" || !scrollEl) return;
+
+    // 1. Inject custom scrollbar style rules
+    let styleElement = document.getElementById("programacion-scrollbar-style") as HTMLStyleElement;
+    if (!styleElement) {
+      styleElement = document.createElement("style");
+      styleElement.id = "programacion-scrollbar-style";
+      document.head.appendChild(styleElement);
+    }
+    styleElement.innerHTML = `
+      .programacion-scroll-area {
+        scrollbar-width: auto !important;
+        -ms-overflow-style: auto !important;
+        overflow-x: auto !important;
+      }
+      .programacion-scroll-area::-webkit-scrollbar {
+        height: 12px !important;
+        width: 12px !important;
+        display: block !important;
+      }
+      .programacion-scroll-area::-webkit-scrollbar-track {
+        background: #F1F5F9 !important;
+        border-radius: 6px !important;
+      }
+      .programacion-scroll-area::-webkit-scrollbar-thumb {
+        background: #CBD5E1 !important;
+        border-radius: 6px !important;
+        border: 3px solid #F1F5F9 !important;
+      }
+      .programacion-scroll-area::-webkit-scrollbar-thumb:hover {
+        background: #94A3B8 !important;
+      }
+    `;
+
+    // 2. Add classes to the scroll node
+    scrollEl.classList.add("programacion-scroll-area");
+    scrollEl.style.overflowX = "scroll";
+
+    // 3. Attach drag-to-scroll event listeners
+    let isDown = false;
+    let startX: number;
+    let scrollLeft: number;
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return; // only left click
+      isDown = true;
+      scrollEl.style.cursor = "grabbing";
+      startX = e.clientX;
+      scrollLeft = scrollEl.scrollLeft;
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDown) return;
+      e.preventDefault();
+      const x = e.clientX;
+      const walk = (startX - x) * 1.5;
+      scrollEl.scrollLeft = scrollLeft + walk;
+    };
+
+    const onMouseUp = () => {
+      if (isDown) {
+        isDown = false;
+        scrollEl.style.cursor = "grab";
+      }
+    };
+
+    scrollEl.style.cursor = "grab";
+    scrollEl.style.userSelect = "none";
+
+    scrollEl.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+
+    return () => {
+      scrollEl.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [scrollEl]);
+
+  // Extract all unique room numbers from the cinema config (matching Control de Salas)
+  const rooms = useMemo(() => {
+    const list: number[] = [];
+    for (let i = 1; i <= salasCount; i++) {
+      list.push(i);
+    }
+    return list;
+  }, [salasCount]);
+  const hasSavedProgramming = !!savedWeekly?.weeklyRows && savedWeekly.weeklyRows.length > 0 && savedWeekly.startDate === selectedWeekStart;
+
+  // Build the list of shows for the selected day
+  const shows = useMemo(() => {
+    const list: DailyShow[] = [];
+
+    if (useApiData) {
+      const currentWeek = getMovieWeekStartForNow();
+
+      // Case A: If there's no saved weekly programming layout matching the selected week or adjustShowtimes is false.
+      if (!hasSavedProgramming || !adjustShowtimes) {
+        if (apiData && selectedWeekStart) {
+          // Group API sessions by sessionId (to merge DBOX and normal)
+          const sessionsBySessionId: Record<string, any[]> = {};
+          apiData.forEach((session) => {
+            // Filter by selected week
+            const utcDate = new Date(session.sessionDateTime);
+            const weekStart = getMovieWeekStart(utcDate);
+            if (weekStart !== selectedWeekStart) return;
+
+            // Map UTC sessionDateTime directly (BFF date string represents local time)
+            const arDate = new Date(utcDate.getTime());
+            if (arDate.getUTCHours() < 6) {
+              arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
+            }
+
+            // Get day key
+            const dayNum = arDate.getUTCDay(); // 0 = Sunday, 1 = Monday, etc.
+            const map: Record<number, WeekdayKey> = {
+              0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",
+              4: "jueves", 5: "viernes", 6: "sabado"
+            };
+            const sessionDay = map[dayNum];
+
+            // We only care about sessions on the selected day
+            if (sessionDay !== selectedDay) return;
+
+            const sid = session.sessionId;
+            if (!sessionsBySessionId[sid]) {
+              sessionsBySessionId[sid] = [];
+            }
+            sessionsBySessionId[sid].push(session);
+          });
+
+          Object.keys(sessionsBySessionId).forEach((sid) => {
+            const group = sessionsBySessionId[sid];
+            const first = group[0];
+
+            const utcDate = new Date(first.sessionDateTime);
+            const arDate = new Date(utcDate.getTime());
+
+            const hours = String(arDate.getUTCHours()).padStart(2, '0');
+            const mins = String(arDate.getUTCMinutes()).padStart(2, '0');
+            const inicio = `${hours}:${mins}`;
+
+            // Fallback duration 120 mins (using runTime if available from server) + 15 mins of advertising
+            const durationMins = (first.runTime || 120) + 15;
+            const endMins = (arDate.getUTCHours() * 60 + arDate.getUTCMinutes() + durationMins) % 1440;
+            const endH = Math.floor(endMins / 60);
+            const endM = endMins % 60;
+            const fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+            // Merge normal and dbox seats
+            let formats: string[] = [];
+            let isPremiere = false;
+
+            let hasDbox = false;
+            let normalCapacity = 0;
+            let normalAvailable = 0;
+            let dboxCapacity = 0;
+            let dboxAvailable = 0;
+
+            group.forEach((s) => {
+              formats.push(s.sessionFormat);
+              if (s.premiere) isPremiere = true;
+
+              if (s.sessionFormat.toUpperCase().includes("DBOX")) {
+                hasDbox = true;
+                dboxCapacity += s.occupation.capacity;
+                dboxAvailable += s.occupation.availableSeats;
+              } else {
+                normalCapacity += s.occupation.capacity;
+                normalAvailable += s.occupation.availableSeats;
+              }
+            });
+
+            const normalSold = Math.max(0, normalCapacity - normalAvailable);
+            const dboxSold = Math.max(0, dboxCapacity - dboxAvailable);
+            const totalSold = normalSold + dboxSold;
+            const totalCapacity = normalCapacity > 0 ? normalCapacity : dboxCapacity;
+            const totalAvailable = Math.max(0, totalCapacity - totalSold);
+
+            // Extract a clean rating from tags or default empty
+            let rating = "";
+            for (const s of group) {
+              const r = s.rating || s.calificacion || s.tags?.[0]?.label || "";
+              if (r) {
+                if (!rating || (isMarketingTag(rating) && !isMarketingTag(r))) {
+                  rating = r;
+                }
+              }
+            }
+
+            const is3d = formats.some(f => f.toUpperCase().includes("3D"));
+            const formatStr = is3d ? "3D" : "2D";
+            const langName = (first.language?.name || first.language || "").toUpperCase();
+            let langStr = "CAS";
+            if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
+              langStr = "SUB";
+            }
+            const peliculaFormatted = `${first.movieName} ${formatStr} ${langStr}`.toUpperCase();
+
+            list.push({
+              sala: Number(first.theaterRoom),
+              pelicula: peliculaFormatted,
+              calificacion: rating,
+              inicio,
+              fin,
+              sortInicio: timeToMinutes(inicio),
+              sortFin: timeToMinutes(fin),
+
+              isSimulated: true,
+              sessionId: sid,
+              sessionDateTime: first.sessionDateTime,
+              sessionFormat: Array.from(new Set(formats)).join(" / "),
+              language: first.language.name,
+              premiere: isPremiere,
+              corporateId: first.corporateId,
+              movieId: first.movieId,
+              occupiedSeats: first.occupiedSeats || [],
+
+              capacity: totalCapacity,
+              availableSeats: totalAvailable,
+              soldSeats: totalSold,
+
+              hasDbox,
+              normalCapacity,
+              normalAvailable,
+              normalSold,
+              dboxCapacity,
+              dboxAvailable,
+              dboxSold,
+
+              runTime: first.runTime,
+              filmPersons: first.filmPersons,
+              posterUrl: first.posterUrl,
+            });
+          });
+        }
+      } else {
+        // Case B: Current Week (either static view, or live view enriched with API data).
+        // We use the static PDF/Excel structure as the master timeline layout.
+        if (savedWeekly?.weeklyRows) {
+          // Pre-calculate API mapping for the selected day to speed up lookups
+          const apiLookup: Record<number, any[]> = {};
+          if (useApiData && apiData && selectedWeekStart) {
+            apiData.forEach((session) => {
+              const utcDate = new Date(session.sessionDateTime);
+              const weekStart = getMovieWeekStart(utcDate);
+              if (weekStart !== selectedWeekStart) return;
+
+              const arDate = new Date(utcDate.getTime());
+              if (arDate.getUTCHours() < 6) {
+                arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
+              }
+              const dayNum = arDate.getUTCDay();
+              const map: Record<number, WeekdayKey> = {
+                0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",
+                4: "jueves", 5: "viernes", 6: "sabado"
+              };
+              const sessionDay = map[dayNum];
+              if (sessionDay !== selectedDay) return;
+
+              const room = Number(session.theaterRoom);
+              if (!apiLookup[room]) {
+                apiLookup[room] = [];
+              }
+              apiLookup[room].push(session);
+            });
+          }
+
+          savedWeekly.weeklyRows.forEach((row) => {
+            const ranges = row.horariosPorDia?.[selectedDay] ?? [];
+            ranges.forEach((item: string) => {
+              let inicio = "";
+              let fin = "";
+              const match = item.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+              if (match) {
+                inicio = match[1];
+                fin = match[2];
+              } else {
+                const timeMatch = item.match(/(\d{1,2}:\d{2})/);
+                if (timeMatch) {
+                  inicio = timeMatch[1];
+                  const [h, m] = inicio.split(":").map(Number);
+                  const endMins = (h * 60 + m + 120) % 1440;
+                  const endH = Math.floor(endMins / 60);
+                  const endM = endMins % 60;
+                  fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+                }
+              }
+
+              if (inicio && fin) {
+                const show: DailyShow = {
+                  sala: Number(row.sala),
+                  pelicula: row.pelicula,
+                  calificacion: row.calificacion || "",
+                  inicio,
+                  fin,
+                  sortInicio: timeToMinutes(inicio),
+                  sortFin: timeToMinutes(fin),
+                  isSimulated: false,
+                };
+
+                // If in API mode, try to enrich with occupancy details
+                if (useApiData) {
+                  const room = Number(show.sala);
+                  const sessionsInRoom = apiLookup[room] || [];
+                  const showInicioMins = timeToMinutes(show.inicio);
+                  
+                  // Buscar todas las sesiones en la misma sala que comiencen dentro de un rango de 60 minutos
+                  // Agrupamos por sessionId para combinar sesiones normales y DBOX
+                  const sessionsBySessionId: Record<string, any[]> = {};
+                  
+                  sessionsInRoom.forEach((s) => {
+                    const sDate = new Date(s.sessionDateTime);
+                    const sHours = String(sDate.getUTCHours()).padStart(2, "0");
+                    const sMins = String(sDate.getUTCMinutes()).padStart(2, "0");
+                    const sTimeStr = `${sHours}:${sMins}`;
+                    const sTimeMins = timeToMinutes(sTimeStr);
+                    
+                    const diff = Math.abs(sTimeMins - showInicioMins);
+                    const finalDiff = Math.min(diff, 1440 - diff); // Manejar cambio de medianoche
+                    
+                    if (finalDiff <= 90) {
+                      if (!sessionsBySessionId[s.sessionId]) {
+                        sessionsBySessionId[s.sessionId] = [];
+                      }
+                      sessionsBySessionId[s.sessionId].push(s);
+                    }
+                  });
+                  
+                  const sessionIds = Object.keys(sessionsBySessionId);
+                  if (sessionIds.length > 0) {
+                    // Seleccionar la sesión que tenga la menor diferencia de horario
+                    let bestSessionId = sessionIds[0];
+                    let bestDiff = 9999;
+                    
+                    sessionIds.forEach((sid) => {
+                      const s = sessionsBySessionId[sid][0];
+                      const sDate = new Date(s.sessionDateTime);
+                      const sHours = String(sDate.getUTCHours()).padStart(2, "0");
+                      const sMins = String(sDate.getUTCMinutes()).padStart(2, "0");
+                      const sTimeStr = `${sHours}:${sMins}`;
+                      const sTimeMins = timeToMinutes(sTimeStr);
+                      
+                      const diff = Math.abs(sTimeMins - showInicioMins);
+                      const finalDiff = Math.min(diff, 1440 - diff);
+                      
+                      if (finalDiff < bestDiff) {
+                        bestDiff = finalDiff;
+                        bestSessionId = sid;
+                      }
+                    });
+                    
+                    const matchingSessions = sessionsBySessionId[bestSessionId];
+                    
+                    let formats: string[] = [];
+                    let isPremiere = false;
+
+                    let hasDbox = false;
+                    let normalCapacity = 0;
+                    let normalAvailable = 0;
+                    let dboxCapacity = 0;
+                    let dboxAvailable = 0;
+
+                    matchingSessions.forEach((s) => {
+                      formats.push(s.sessionFormat);
+                      if (s.premiere) isPremiere = true;
+
+                      if (s.sessionFormat.toUpperCase().includes("DBOX")) {
+                        hasDbox = true;
+                        dboxCapacity += s.occupation.capacity;
+                        dboxAvailable += s.occupation.availableSeats;
+                      } else {
+                        normalCapacity += s.occupation.capacity;
+                        normalAvailable += s.occupation.availableSeats;
+                      }
+                    });
+
+                    const normalSold = Math.max(0, normalCapacity - normalAvailable);
+                    const dboxSold = Math.max(0, dboxCapacity - dboxAvailable);
+                    const totalSold = normalSold + dboxSold;
+                    const totalCapacity = normalCapacity > 0 ? normalCapacity : dboxCapacity;
+                    const totalAvailable = Math.max(0, totalCapacity - totalSold);
+
+                    show.isSimulated = true;
+                    show.sessionId = matchingSessions[0].sessionId;
+                    show.sessionDateTime = matchingSessions[0].sessionDateTime;
+                    show.sessionFormat = Array.from(new Set(formats)).join(" / ");
+                    show.language = matchingSessions[0].language.name;
+                    show.premiere = isPremiere;
+                    show.corporateId = matchingSessions[0].corporateId;
+                    show.movieId = matchingSessions[0].movieId;
+                    show.occupiedSeats = matchingSessions[0].occupiedSeats || [];
+                    show.runTime = matchingSessions[0].runTime;
+                    show.filmPersons = matchingSessions[0].filmPersons;
+                    show.posterUrl = matchingSessions[0].posterUrl;
+                    let sessionRating = "";
+                    for (const s of matchingSessions) {
+                      const r = s.rating || s.calificacion || s.tags?.[0]?.label || "";
+                      if (r) {
+                        if (!sessionRating || (isMarketingTag(sessionRating) && !isMarketingTag(r))) {
+                          sessionRating = r;
+                        }
+                      }
+                    }
+                    if (sessionRating) {
+                      show.calificacion = sessionRating;
+                    }
+
+                    show.capacity = totalCapacity;
+                    show.availableSeats = totalAvailable;
+                    show.soldSeats = totalSold;
+
+                    show.hasDbox = hasDbox;
+                    show.normalCapacity = normalCapacity;
+                    show.normalAvailable = normalAvailable;
+                    show.normalSold = normalSold;
+                    show.dboxCapacity = dboxCapacity;
+                    show.dboxAvailable = dboxAvailable;
+                    show.dboxSold = dboxSold;
+
+                    if (adjustShowtimes) {
+                      const sDate = new Date(matchingSessions[0].sessionDateTime);
+                      const sHours = String(sDate.getUTCHours()).padStart(2, "0");
+                      const sMins = String(sDate.getUTCMinutes()).padStart(2, "0");
+                      const realInicioStr = `${sHours}:${sMins}`;
+
+                      const originalDuration = (timeToMinutes(show.fin) - timeToMinutes(show.inicio) + 1440) % 1440;
+                      show.inicio = realInicioStr;
+                      const newFinMins = (timeToMinutes(realInicioStr) + originalDuration) % 1440;
+                      const endH = Math.floor(newFinMins / 60);
+                      const endM = newFinMins % 60;
+                      show.fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+                      show.sortInicio = timeToMinutes(show.inicio);
+                      show.sortFin = timeToMinutes(show.fin);
+                    }
+                  } else {
+                    console.warn(`[Matching B] No match for Sala ${room} - Show: ${show.pelicula} (${show.inicio}). Available DB sessions in this room:`, 
+                      sessionsInRoom.map(s => {
+                        const sDate = new Date(s.sessionDateTime);
+                        return `${String(sDate.getUTCHours()).padStart(2, "0")}:${String(sDate.getUTCMinutes()).padStart(2, "0")}`;
+                      })
+                    );
+                  }
+                }
+
+                list.push(show);
+              }
+            });
+          });
+        }
+      }
+    }
+
+    // Agregar Eventos guardados al día correspondiente a la sala y hora correspondiente
+    if (eventos && eventos.length > 0 && selectedWeekStart) {
+      eventos.forEach((evt) => {
+        if (!evt.sala || evt.sala.trim() === "") return; // Si no tiene sala asignada, no se crea
+
+        const eventDate = toDate(evt.diaHora);
+        const eventWeekStart = getMovieWeekStart(eventDate);
+        if (eventWeekStart !== selectedWeekStart) return;
+
+        // Comprobar si el evento corresponde al día seleccionado cinematográficamente
+        const eventDayKey = getCinematicWeekdayKey(eventDate);
+        if (eventDayKey !== selectedDay) return;
+
+        const duration = evt.duracion !== undefined && evt.duracion !== null && Number(evt.duracion) > 0 
+          ? Number(evt.duracion) 
+          : 75; // 75 min default
+
+        const startHours = String(eventDate.getHours()).padStart(2, '0');
+        const startMins = String(eventDate.getMinutes()).padStart(2, '0');
+        const inicio = `${startHours}:${startMins}`;
+        const fin = addMinutesToTimeStr(inicio, duration);
+
+        list.push({
+          sala: Number(evt.sala),
+          pelicula: `[EVENTO] ${evt.pelicula || "EVENTO"}`.toUpperCase(),
+          calificacion: "",
+          inicio,
+          fin,
+          sortInicio: timeToMinutes(inicio),
+          sortFin: timeToMinutes(fin),
+          isEvent: true,
+          isSimulated: false,
+          desayuno: !!evt.desayuno,
+          combo: !!evt.combo,
+        } as any);
+      });
+    }
+
+    // Vincular Créditos a cada película de la función
+    if (creditosList && creditosList.length > 0) {
+      list.forEach((show) => {
+        if (!show.isEvent) {
+          const matched = findMatchingCredito(show.pelicula, creditosList);
+          if (matched && matched.horaCredito) {
+            show.creditosHoraReloj = calculateCreditoClockTime(show.inicio, show.fin, matched.horaCredito);
+            show.horaCreditoOriginal = matched.horaCredito;
+          }
+        }
+      });
+    }
+
+    return list;
+  }, [savedWeekly, selectedDay, useApiData, apiData, selectedWeekStart, adjustShowtimes, eventos, creditosList]);
+
+  // Compute daily and weekly statistics and operational alerts
+  const stats = useMemo(() => {
+    if (!useApiData || !apiData || !selectedWeekStart) {
+      return null;
+    }
+
+    // 1. Weekly Stats (for the entire selectedWeekStart)
+    let weeklyTotalSold = 0;
+    let weeklyTotalCapacity = 0;
+    let weeklyTotalSessions = 0;
+    let weekly3DSold = 0;
+
+    const movieSales: Record<string, number> = {};
+    const movieCapacities: Record<string, number> = {};
+    const movieSessions: Record<string, number> = {};
+
+    const roomSales: Record<number, number> = {};
+    const roomCapacities: Record<number, number> = {};
+    const roomSessions: Record<number, number> = {};
+
+    const daySales: Record<string, number> = {};
+    const dayCapacities: Record<string, number> = {};
+    const daySessions: Record<string, number> = {};
+    const day3DSales: Record<string, number> = {};
+
+    const timeSlots = {
+      matine: { key: "matine", label: "Matiné", sub: "< 15:00 hs", icon: "weather-sunset-up" as const, sold: 0, capacity: 0, sessions: 0 },
+      tarde: { key: "tarde", label: "Tarde", sub: "15:00 a 19:00 hs", icon: "white-balance-sunny" as const, sold: 0, capacity: 0, sessions: 0 },
+      noche: { key: "noche", label: "Noche", sub: "19:00 a 23:00 hs", icon: "weather-sunset-down" as const, sold: 0, capacity: 0, sessions: 0 },
+      trasnoche: { key: "trasnoche", label: "Trasnoche", sub: "≥ 23:00 hs", icon: "weather-night" as const, sold: 0, capacity: 0, sessions: 0 },
+    };
+
+    let maxOccupationSession: any = null;
+    let maxOccupationSessionRate = -1;
+
+    // Initialize all days in daySales and day3DSales to 0 to ensure they all exist in chart even if 0 sales
+    DAYS_OF_WEEK.forEach(day => {
+      daySales[day.key] = 0;
+      dayCapacities[day.key] = 0;
+      daySessions[day.key] = 0;
+      day3DSales[day.key] = 0;
+    });
+
+    apiData.forEach((session) => {
+      const utcDate = new Date(session.sessionDateTime);
+      const weekStart = getMovieWeekStart(utcDate);
+      if (weekStart !== selectedWeekStart) return;
+
+      const sold = Math.max(0, session.occupation.capacity - session.occupation.availableSeats);
+      const capacity = session.occupation.capacity || 0;
+      
+      weeklyTotalSold += sold;
+      weeklyTotalCapacity += capacity;
+      weeklyTotalSessions += 1;
+
+      const is3D = /3d/i.test(session.movieName) || /3d/i.test(session.sessionFormat || "");
+      if (is3D) {
+        weekly3DSold += sold;
+      }
+
+      // Movie sales
+      const movie = session.movieName;
+      movieSales[movie] = (movieSales[movie] || 0) + sold;
+      movieCapacities[movie] = (movieCapacities[movie] || 0) + capacity;
+      movieSessions[movie] = (movieSessions[movie] || 0) + 1;
+
+      // Room sales
+      const room = Number(session.theaterRoom);
+      roomSales[room] = (roomSales[room] || 0) + sold;
+      roomCapacities[room] = (roomCapacities[room] || 0) + capacity;
+      roomSessions[room] = (roomSessions[room] || 0) + 1;
+
+      // Day sales
+      const arDate = new Date(utcDate.getTime());
+      if (arDate.getUTCHours() < 6) {
+        arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
+      }
+      const dayNum = arDate.getUTCDay();
+      const map: Record<number, WeekdayKey> = {
+        0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",
+        4: "jueves", 5: "viernes", 6: "sabado"
+      };
+      const sessionDay = map[dayNum];
+      if (sessionDay) {
+        daySales[sessionDay] = (daySales[sessionDay] || 0) + sold;
+        dayCapacities[sessionDay] = (dayCapacities[sessionDay] || 0) + capacity;
+        daySessions[sessionDay] = (daySessions[sessionDay] || 0) + 1;
+        if (is3D) {
+          day3DSales[sessionDay] = (day3DSales[sessionDay] || 0) + sold;
+        }
+      }
+
+      // Time Slot
+      const hour = arDate.getUTCHours();
+      if (hour < 6 || hour >= 23) {
+        timeSlots.trasnoche.sold += sold;
+        timeSlots.trasnoche.capacity += capacity;
+        timeSlots.trasnoche.sessions += 1;
+      } else if (hour < 15) {
+        timeSlots.matine.sold += sold;
+        timeSlots.matine.capacity += capacity;
+        timeSlots.matine.sessions += 1;
+      } else if (hour < 19) {
+        timeSlots.tarde.sold += sold;
+        timeSlots.tarde.capacity += capacity;
+        timeSlots.tarde.sessions += 1;
+      } else {
+        timeSlots.noche.sold += sold;
+        timeSlots.noche.capacity += capacity;
+        timeSlots.noche.sessions += 1;
+      }
+
+      // Most full session
+      if (capacity > 0) {
+        const rate = sold / capacity;
+        if (rate > maxOccupationSessionRate || (rate === maxOccupationSessionRate && sold > (maxOccupationSession?.soldSeats || 0))) {
+          maxOccupationSessionRate = rate;
+          const hours = String(arDate.getUTCHours()).padStart(2, '0');
+          const mins = String(arDate.getUTCMinutes()).padStart(2, '0');
+          maxOccupationSession = {
+            pelicula: movie,
+            sala: room,
+            inicio: `${hours}:${mins}`,
+            diaLabel: DAYS_OF_WEEK.find(d => d.key === sessionDay)?.label || sessionDay,
+            soldSeats: sold,
+            capacity: capacity,
+            rate: rate
+          };
+        }
+      }
+    });
+
+    // Find movie most and least sold
+    let mostViewedMovie = "";
+    let mostViewedMovieCount = -1;
+    let leastViewedMovie = "";
+    let leastViewedMovieCount = Infinity;
+
+    Object.keys(movieSales).forEach((movie) => {
+      const count = movieSales[movie];
+      if (count > mostViewedMovieCount) {
+        mostViewedMovieCount = count;
+        mostViewedMovie = movie;
+      }
+      if (count < leastViewedMovieCount) {
+        leastViewedMovieCount = count;
+        leastViewedMovie = movie;
+      }
+    });
+
+    // Find day with most sales
+    let bestDayKey = "jueves";
+    let bestDaySalesValue = -1;
+    Object.keys(daySales).forEach((dayKey) => {
+      const sales = daySales[dayKey];
+      if (sales > bestDaySalesValue) {
+        bestDaySalesValue = sales;
+        bestDayKey = dayKey;
+      }
+    });
+    const bestDayLabelText = DAYS_OF_WEEK.find(d => d.key === bestDayKey)?.label || bestDayKey;
+    const bestDayOccupancy = (dayCapacities[bestDayKey] || 0) > 0 ? ((daySales[bestDayKey] || 0) / dayCapacities[bestDayKey]) * 100 : 0;
+
+    // Find room with most sales
+    let bestRoomNum = -1;
+    let bestRoomSalesValue = -1;
+    Object.keys(roomSales).forEach((roomStr) => {
+      const roomNum = Number(roomStr);
+      const sales = roomSales[roomNum];
+      if (sales > bestRoomSalesValue) {
+        bestRoomSalesValue = sales;
+        bestRoomNum = roomNum;
+      }
+    });
+    const bestRoomOccupancy = (roomCapacities[bestRoomNum] || 0) > 0 ? ((roomSales[bestRoomNum] || 0) / roomCapacities[bestRoomNum]) * 100 : 0;
+
+    // Aggregates
+    const weeklyAvgOccupancy = weeklyTotalCapacity > 0 ? (weeklyTotalSold / weeklyTotalCapacity) * 100 : 0;
+    const weeklyAvgPerSession = weeklyTotalSessions > 0 ? Math.round(weeklyTotalSold / weeklyTotalSessions) : 0;
+    const weekly3DPercent = weeklyTotalSold > 0 ? (weekly3DSold / weeklyTotalSold) * 100 : 0;
+    const mostViewedMovieShare = weeklyTotalSold > 0 ? (mostViewedMovieCount / weeklyTotalSold) * 100 : 0;
+    const weekendSold = (daySales["viernes"] || 0) + (daySales["sabado"] || 0) + (daySales["domingo"] || 0);
+    const weekdaySold = Math.max(0, weeklyTotalSold - weekendSold);
+
+    // Day details
+    const dayDetails = DAYS_OF_WEEK.map((day) => {
+      const sold = daySales[day.key] || 0;
+      const cap = dayCapacities[day.key] || 0;
+      const count = daySessions[day.key] || 0;
+      const occ = cap > 0 ? (sold / cap) * 100 : 0;
+      const isWeekend = day.key === "viernes" || day.key === "sabado" || day.key === "domingo";
+      return {
+        ...day,
+        sold,
+        capacity: cap,
+        sessions: count,
+        occupancy: occ,
+        isWeekend
+      };
+    });
+
+    // Room details
+    const roomDetails = Object.keys(roomSales).map(Number).sort((a, b) => a - b).map((room) => {
+      const sold = roomSales[room] || 0;
+      const cap = roomCapacities[room] || 0;
+      const count = roomSessions[room] || 0;
+      const occ = cap > 0 ? (sold / cap) * 100 : 0;
+      return {
+        room,
+        sold,
+        capacity: cap,
+        sessions: count,
+        occupancy: occ
+      };
+    });
+
+    // 2. Daily Stats (for the current shows list of the selected day)
+    let dailyTotalSold = 0;
+    let daily3DSold = 0;
+    const recordingRiskShows: DailyShow[] = [];
+    const guideNeededShows: DailyShow[] = [];
+
+    shows.forEach((show) => {
+      if (show.isSimulated && show.capacity !== undefined && show.capacity > 0) {
+        const sold = show.soldSeats ?? 0;
+        dailyTotalSold += sold;
+
+        const is3D = /3d/i.test(show.pelicula) || /3d/i.test(show.sessionFormat || "");
+        if (is3D) {
+          daily3DSold += sold;
+        }
+
+        const rate = sold / show.capacity;
+        if (rate < 0.02 && sold > 0) {
+          recordingRiskShows.push(show);
+        } else if (rate > 0.60) {
+          guideNeededShows.push(show);
+        }
+      }
+    });
+
+    return {
+      weeklyTotalSold,
+      weeklyTotalCapacity,
+      weeklyTotalSessions,
+      weeklyAvgOccupancy,
+      weeklyAvgPerSession,
+      weekly3DSold,
+      weekly3DPercent,
+      weekly2DSold: Math.max(0, weeklyTotalSold - weekly3DSold),
+      dailyTotalSold,
+      daily3DSold,
+      recordingRiskShows,
+      guideNeededShows,
+
+      // Rich stats
+      movieSales,
+      movieCapacities,
+      movieSessions,
+      roomSales,
+      roomCapacities,
+      roomSessions,
+      roomDetails,
+      daySales,
+      dayCapacities,
+      daySessions,
+      dayDetails,
+      day3DSales,
+      timeSlots,
+      weekendSold,
+      weekdaySold,
+      mostViewedMovie,
+      mostViewedMovieCount,
+      mostViewedMovieShare,
+      leastViewedMovie,
+      leastViewedMovieCount: leastViewedMovieCount === Infinity ? 0 : leastViewedMovieCount,
+      maxOccupationSession,
+      bestDayLabel: bestDayLabelText,
+      bestDaySales: bestDaySalesValue,
+      bestDayOccupancy,
+      bestRoom: bestRoomNum,
+      bestRoomSales: bestRoomSalesValue,
+      bestRoomOccupancy
+    };
+  }, [useApiData, apiData, selectedWeekStart, shows]);
+
+  const getOperationalStartMins = (show: DailyShow) => {
+    const startMins = timeToMinutes(show.inicio);
+    return startMins >= 360 ? startMins - 360 : startMins + 1440 - 360;
+  };
+
+  const scrollToUpcomingShow = () => {
+    if (!verticalScrollRef.current) return;
+    
+    const sortedShows = [...shows].sort((a, b) => {
+      const aStart = getOperationalStartMins(a);
+      const bStart = getOperationalStartMins(b);
+      return aStart - bStart;
+    });
+
+    const nextShowIndex = sortedShows.findIndex(show => getShowStatus(show) === "FUTURE");
+    
+    if (nextShowIndex !== -1) {
+      const cardY = cardYOffsets.current[nextShowIndex];
+      if (cardY !== undefined) {
+        const targetY = listContainerY.current + cardY;
+        verticalScrollRef.current.scrollTo({ y: targetY, animated: true });
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (viewMode === "list" && shows.length > 0) {
+      cardYOffsets.current = {};
+      const timer = setTimeout(() => {
+        scrollToUpcomingShow();
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedDay, viewMode, shows]);
+
+  // Determine dynamic timeline start and end bounds based on shows of the selected day
+  const { timelineStartMins, timelineEndMins, minStartMins } = useMemo(() => {
+    if (shows.length === 0) {
+      return { timelineStartMins: 0, timelineEndMins: 1440, minStartMins: 0 };
+    }
+    let minStart = 1440;
+    let maxEnd = 0;
+    shows.forEach((show) => {
+      const startMins = timeToMinutes(show.inicio);
+      const endMins = timeToMinutes(show.fin);
+      let tStart = startMins >= 360 ? startMins - 360 : startMins + 1440 - 360;
+      let tEnd = endMins >= 360 ? endMins - 360 : endMins + 1440 - 360;
+      if (tEnd < tStart) {
+        tEnd += 1440;
+      }
+      if (tStart < minStart) minStart = tStart;
+      if (tEnd > maxEnd) maxEnd = tEnd;
+    });
+
+    // 1 hour before first show start (aligned to start of hour)
+    let start = Math.max(0, Math.floor((minStart - 60) / 60) * 60);
+    // 1 hour after last show end (aligned to end of hour)
+    let end = Math.min(1440, Math.ceil((maxEnd + 60) / 60) * 60);
+
+    return { timelineStartMins: start, timelineEndMins: end, minStartMins: minStart };
+  }, [shows]);
+
+  // Calculate opening line position (30 minutes before first show starts)
+  const openingLeft = useMemo(() => {
+    if (shows.length === 0) return null;
+    const openingMins = minStartMins - 30;
+    return (openingMins - timelineStartMins) * MINUTE_WIDTH;
+  }, [minStartMins, timelineStartMins, shows]);
+
+  // Calculate current time line position
+  const showCurrentTimeLine = useMemo(() => {
+    if (useApiData && selectedWeekStart) {
+      const currentWeek = getMovieWeekStartForNow();
+      if (selectedWeekStart !== currentWeek) return false;
+    }
+    const today = getCurrentWeekdayKey();
+    return (
+      selectedDay === today &&
+      shows.length > 0 &&
+      currentTimeMins >= timelineStartMins &&
+      currentTimeMins <= timelineEndMins
+    );
+  }, [selectedDay, shows.length, currentTimeMins, timelineStartMins, timelineEndMins, useApiData, selectedWeekStart]);
+
+  const currentTimeLeft = useMemo(() => {
+    return (currentTimeMins - timelineStartMins) * MINUTE_WIDTH;
+  }, [currentTimeMins, timelineStartMins]);
+
+  // Check if badges will overlap (distance < 110px)
+  const badgesOverlap = useMemo(() => {
+    if (openingLeft === null || !showCurrentTimeLine) return false;
+    const distance = Math.abs(currentTimeLeft - openingLeft);
+    return distance < 110;
+  }, [openingLeft, showCurrentTimeLine, currentTimeLeft]);
+
+  // Determine status (PAST, PLAYING, FUTURE) of a show
+  const getShowStatus = (show: DailyShow) => {
+    if (useApiData && selectedWeekStart) {
+      const currentWeek = getMovieWeekStartForNow();
+      if (selectedWeekStart > currentWeek) {
+        return "FUTURE";
+      }
+      if (selectedWeekStart < currentWeek) {
+        return "PAST";
+      }
+    }
+
+    const today = getCurrentWeekdayKey();
+    const todayIdx = DAY_CYCLE_INDEX[today];
+    const selectedIdx = DAY_CYCLE_INDEX[selectedDay];
+
+    if (selectedIdx < todayIdx) {
+      return "PAST";
+    }
+    if (selectedIdx > todayIdx) {
+      return "FUTURE";
+    }
+
+    // Today: compare showtimes
+    const startMins = timeToMinutes(show.inicio);
+    const endMins = timeToMinutes(show.fin);
+    let tStart = startMins >= 360 ? startMins - 360 : startMins + 1440 - 360;
+    let tEnd = endMins >= 360 ? endMins - 360 : endMins + 1440 - 360;
+
+    if (tEnd < tStart) {
+      tEnd += 1440;
+    }
+
+    if (currentTimeMins > tEnd) {
+      return "PAST";
+    }
+    if (currentTimeMins >= tStart && currentTimeMins <= tEnd) {
+      return "PLAYING";
+    }
+    return "FUTURE";
+  };
+
+  // Calculate card position and width based on dynamic timeline bounds
+  const getPositionAndWidth = (show: DailyShow) => {
+    const startMins = timeToMinutes(show.inicio);
+    const endMins = timeToMinutes(show.fin);
+
+    // Map to timeline minutes (starting at 06:00 AM)
+    let tStart = startMins >= 360 ? startMins - 360 : startMins + 1440 - 360;
+    let tEnd = endMins >= 360 ? endMins - 360 : endMins + 1440 - 360;
+
+    if (tEnd < tStart) {
+      tEnd += 1440;
+    }
+
+    const duration = tEnd - tStart;
+
+    return {
+      left: (tStart - timelineStartMins) * MINUTE_WIDTH,
+      width: Math.max(duration * MINUTE_WIDTH, 40),
+    };
+  };
+
+  // Generate hour markings for the header
+  const dynamicHoursArray = useMemo(() => {
+    const list = [];
+    const startHour = 6 + timelineStartMins / 60;
+    const totalHours = (timelineEndMins - timelineStartMins) / 60;
+    for (let i = 0; i < totalHours; i++) {
+      const h = (startHour + i) % 24;
+      list.push(`${String(h).padStart(2, "0")}:00`);
+    }
+    return list;
+  }, [timelineStartMins, timelineEndMins]);
+
+  const timelineWidth = dynamicHoursArray.length * HOUR_WIDTH;
+
+  // Calculate show duration in minutes
+  const getShowDuration = (show: DailyShow) => {
+    const startMins = timeToMinutes(show.inicio);
+    const endMins = timeToMinutes(show.fin);
+    let tStart = startMins >= 360 ? startMins - 360 : startMins + 1440 - 360;
+    let tEnd = endMins >= 360 ? endMins - 360 : endMins + 1440 - 360;
+    if (tEnd < tStart) {
+      tEnd += 1440;
+    }
+    return tEnd - tStart;
+  };
+
+  // Auto-scroll to center the "Ahora" (current time) line if it is visible
+  useEffect(() => {
+    if (!showCurrentTimeLine) {
+      lastScrolledDay.current = null;
+      return;
+    }
+
+    if (!loading && scrollEl && lastScrolledDay.current !== selectedDay) {
+      lastScrolledDay.current = selectedDay;
+      const viewportWidth = windowWidth - currentRoomColWidth;
+      const targetScrollX = Math.max(
+        0,
+        Math.min(timelineWidth - viewportWidth, currentTimeLeft - viewportWidth / 2)
+      );
+
+      const timer = setTimeout(() => {
+        if (timelineScrollRef.current) {
+          timelineScrollRef.current.scrollTo({ x: targetScrollX, animated: false });
+        } else if (scrollEl) {
+          if (typeof scrollEl.scrollTo === "function") {
+            scrollEl.scrollTo({ left: targetScrollX, behavior: "auto" });
+          } else {
+            scrollEl.scrollLeft = targetScrollX;
+          }
+        }
+      }, 100);
+
+      return () => clearTimeout(timer);
+    }
+  }, [
+    loading,
+    scrollEl,
+    showCurrentTimeLine,
+    selectedDay,
+    currentTimeLeft,
+    windowWidth,
+    currentRoomColWidth,
+    timelineWidth,
+  ]);
+
+  // Synchronize and reset scroll positions when changing cinema or week
+  useEffect(() => {
+    lastScrolledDay.current = null;
+    if (timelineScrollRef.current) {
+      timelineScrollRef.current.scrollTo({ x: 0, animated: false });
+    }
+    if (headerScrollRef.current) {
+      headerScrollRef.current.scrollTo({ x: 0, animated: false });
+    }
+  }, [cineId, selectedWeekStart]);
+
+  if (loading) {
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Cargando programación...</Text>
+      </View>
+    );
+  }
+
+  // Full-screen empty check (only if we have absolutely no weeks available at all)
+  if (availableWeeks.length === 0 || !selectedWeekStart) {
+    return (
+      <View style={styles.centerContainer}>
+        <MaterialCommunityIcons name="calendar-blank" size={64} color={COLORS.muted} />
+        <Text style={styles.noDataTitle}>No hay programación cargada</Text>
+        <Text style={styles.noDataSubtitle}>
+          No se pudieron obtener datos de la API de Cinemark ni existe un historial de sincronizaciones.
+        </Text>
+      </View>
+    );
+  }
+
+  const renderListView = () => {
+    const sortedShows = [...shows].sort((a, b) => {
+      const aStart = getOperationalStartMins(a);
+      const bStart = getOperationalStartMins(b);
+      return aStart - bStart;
+    });
+
+    return (
+      <View 
+        style={styles.listContainer}
+        onLayout={(event) => {
+          listContainerY.current = event.nativeEvent.layout.y;
+        }}
+      >
+        {sortedShows.map((show, idx) => {
+          const isEvent = show.isEvent;
+          const is3D = !isEvent && (/3d/i.test(show.pelicula) || /3d/i.test(show.sessionFormat || ""));
+          const movieAccentColor = isEvent ? COLORS.betaBorder : getMovieColor(show.pelicula);
+          const status = getShowStatus(show);
+          const hasEntered = status === "PAST" || status === "PLAYING";
+          
+          return (
+            <View 
+              key={`list-card-${idx}`}
+              onLayout={(event) => {
+                cardYOffsets.current[idx] = event.nativeEvent.layout.y;
+              }}
+              style={[
+                styles.listCard,
+                { borderLeftColor: movieAccentColor },
+                is3D ? { backgroundColor: movieAccentColor } : null,
+                isEvent ? { backgroundColor: COLORS.betaBg, borderLeftColor: COLORS.betaBorder } : null,
+                hasEntered && {
+                  backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+                  borderLeftColor: "#94A3B8",
+                  opacity: 0.6
+                }
+              ]}
+            >
+              {/* Room number to the left */}
+              <View style={[
+                styles.listRoomBadge, 
+                is3D && !hasEntered && { backgroundColor: "rgba(255, 255, 255, 0.25)" },
+                isEvent && !hasEntered && { backgroundColor: COLORS.betaBadgeBg },
+                hasEntered && { backgroundColor: COLORS.border }
+              ]}>
+                <Text style={[
+                  styles.listRoomBadgeText, 
+                  is3D && !hasEntered && { color: "#FFFFFF" },
+                  isEvent && !hasEntered && { color: COLORS.betaText },
+                  hasEntered && { color: COLORS.textSoft }
+                ]}>SALA</Text>
+                <Text style={[
+                  styles.listRoomNumberText, 
+                  is3D && !hasEntered && { color: "#FFFFFF" },
+                  isEvent && !hasEntered && { color: COLORS.betaText },
+                  hasEntered && { color: COLORS.textSoft }
+                ]}>{show.sala}</Text>
+              </View>
+
+              {/* Movie info */}
+              <View style={styles.listInfoContainer}>
+                <Text style={[
+                  styles.listMovieTitle, 
+                  is3D && !hasEntered && { color: "#FFFFFF" },
+                  isEvent && !hasEntered && { color: COLORS.text },
+                  hasEntered && { color: COLORS.textSoft }
+                ]} numberOfLines={2}>
+                  {show.pelicula}{is3D && !/3d/i.test(show.pelicula) ? " (3D)" : ""}
+                </Text>
+                
+                <Text style={[
+                  styles.listMovieTime, 
+                  is3D && !hasEntered && { color: "rgba(255, 255, 255, 0.85)" },
+                  isEvent && !hasEntered && { color: COLORS.textSoft },
+                  hasEntered && { color: COLORS.muted }
+                ]}>
+                  ⏰ {show.inicio} - {show.fin} hs
+                </Text>
+
+                {!show.isEvent && (
+                  <View style={styles.listOccupancyContainer}>
+                    <MaterialCommunityIcons 
+                      name="ticket" 
+                      size={14} 
+                      color={hasEntered ? "#94A3B8" : (is3D ? "#FFFFFF" : "#EAB308")} 
+                    />
+                    <Text style={[
+                      styles.listOccupancyText, 
+                      is3D && !hasEntered && { color: "rgba(255, 255, 255, 0.85)" },
+                      hasEntered && { color: "#94A3B8" }
+                    ]}>
+                      Ventas: {show.capacity !== undefined ? `${show.soldSeats} / ${show.capacity}` : "Sin datos"}
+                    </Text>
+                  </View>
+                )}
+
+                {show.isEvent && (
+                  <View style={{ flexDirection: "row", gap: 6, marginTop: 4 }}>
+                    {show.desayuno && (
+                      <View style={{ backgroundColor: COLORS.successBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <Text style={{ fontSize: 10, color: COLORS.success, fontWeight: "700" }}>☕ Desayuno</Text>
+                      </View>
+                    )}
+                    {show.combo && (
+                      <View style={{ backgroundColor: COLORS.warningBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <Text style={{ fontSize: 10, color: COLORS.warning, fontWeight: "700" }}>🍿 Combo</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {show.isSimulated && (() => {
+                  const rate = show.capacity !== undefined && show.capacity > 0 && show.soldSeats !== undefined ? show.soldSeats / show.capacity : 0;
+                  const sold = show.soldSeats ?? 0;
+                  let alertColor = "";
+                  let alertText = "";
+                  if (rate < 0.02 && sold > 0) {
+                    alertColor = "#EF4444";
+                    alertText = "⚠️ Riesgo de grabación";
+                  } else if (rate > 0.60) {
+                    alertColor = "#10B981";
+                    alertText = "👤 Necesario guía";
+                  }
+                  if (!alertText) return null;
+                  return (
+                    <View style={{ flexDirection: "row", marginTop: 4 }}>
+                      <View style={[
+                        styles.cardAlertBadge, 
+                        { backgroundColor: alertColor, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }
+                      ]}>
+                        <Text style={[styles.cardAlertBadgeText, { fontSize: 10 }]} numberOfLines={1}>
+                          {alertText}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })()}
+              </View>
+
+              {/* View Seats Button */}
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedShow(show);
+                  fetchSeatMap(show);
+                }}
+                disabled={!show.isSimulated}
+                style={[
+                  styles.listButton,
+                  is3D && !hasEntered && { backgroundColor: COLORS.card },
+                  hasEntered && { backgroundColor: COLORS.bgMobile },
+                  !show.isSimulated && { opacity: 0.4 }
+                ]}
+              >
+                <Text style={[
+                  styles.listButtonText,
+                  is3D && show.isSimulated && !hasEntered ? { color: movieAccentColor } : null,
+                  hasEntered && { color: COLORS.muted }
+                ]}>
+                  {show.isSimulated ? "Ver Asientos" : "Sin Mapa"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
+
+  const renderStatsPanel = () => {
+    if (!stats) return null;
+
+    // Sort movies by sales
+    const sortedMovies = Object.entries(stats.movieSales || {})
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .slice(0, 8); // top 8
+
+    // Sort rooms by sales
+    const sortedRooms = Object.entries(stats.roomSales || {})
+      .sort((a, b) => (b[1] as number) - (a[1] as number));
+
+    const maxMovieSales = stats.mostViewedMovieCount > 0 ? stats.mostViewedMovieCount : 1;
+    const maxDaySales = stats.bestDaySales > 0 ? stats.bestDaySales : 1;
+    const maxRoomSales = stats.bestRoomSales > 0 ? stats.bestRoomSales : 1;
+    const maxDay3DSales = Math.max(...Object.values(stats.day3DSales || {}), 1);
+
+    const showTodo = statsSubTab === "todo";
+    const showResumen = showTodo || statsSubTab === "resumen";
+    const showPeliculas = showTodo || statsSubTab === "peliculas";
+    const showDias = showTodo || statsSubTab === "dias";
+    const showSalas = showTodo || statsSubTab === "salas";
+    const showAlertas = showTodo || statsSubTab === "alertas";
+
+    return (
+      <View style={styles.statsModernPanelContainer}>
+        {/* Modern Header */}
+        <View style={styles.statsModernHeader}>
+          <View style={styles.statsModernHeaderTop}>
+            <View style={styles.statsBadgePill}>
+              <MaterialCommunityIcons name="lightning-bolt" size={13} color={COLORS.primary} />
+              <Text style={styles.statsBadgePillText}>ANÁLISIS DE RENDIMIENTO</Text>
+            </View>
+            <View style={styles.statsWeekTag}>
+              <MaterialCommunityIcons name="calendar-range" size={13} color={COLORS.muted} style={{ marginRight: 4 }} />
+              <Text style={styles.statsWeekTagText}>{formatWeekRange(selectedWeekStart)}</Text>
+            </View>
+          </View>
+          <View style={styles.statsModernTitleRow}>
+            <View style={styles.statsModernIconCircle}>
+              <MaterialCommunityIcons name="chart-box-outline" size={22} color="#FFFFFF" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.statsModernTitle}>Estadísticas & Inteligencia Semanal</Text>
+              <Text style={styles.statsModernSubtitle}>
+                Monitoreo comercial, demanda por sala y distribución de horarios
+              </Text>
+            </View>
+          </View>
+
+          {/* Warning Tooltip */}
+          <View style={styles.statsModernNotice}>
+            <MaterialCommunityIcons name="information-outline" size={14} color="#854D0E" style={{ marginRight: 6 }} />
+            <Text style={styles.statsModernNoticeText}>
+              Valores calculados en base a sesiones sincronizadas y reportes semanales. Margen de error mínimo aplicable.
+            </Text>
+          </View>
+
+          {/* Sub-Tabs Selector */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.statsSubTabsScroll}
+          >
+            {[
+              { key: "todo", label: "Vista General", icon: "view-dashboard-outline" },
+              { key: "resumen", label: "Resumen", icon: "chart-timeline-variant" },
+              { key: "peliculas", label: "Top Películas", icon: "filmstrip" },
+              { key: "dias", label: "Días & Turnos", icon: "calendar-clock" },
+              { key: "salas", label: "Salas", icon: "theater" },
+              { key: "alertas", label: `Alertas (${stats.recordingRiskShows.length + stats.guideNeededShows.length})`, icon: "shield-alert-outline" },
+            ].map((tab) => {
+              const isActive = statsSubTab === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  onPress={() => setStatsSubTab(tab.key as any)}
+                  style={[styles.statsSubTabBtn, isActive && styles.statsSubTabBtnActive]}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons
+                    name={tab.icon as any}
+                    size={14}
+                    color={isActive ? "#FFFFFF" : COLORS.textSoft}
+                    style={{ marginRight: 5 }}
+                  />
+                  <Text style={[styles.statsSubTabBtnText, isActive && styles.statsSubTabBtnTextActive]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {/* 1. Scorecards Grid (Resumen) */}
+        {showResumen && (
+          <View style={styles.statsModernSection}>
+            <View style={styles.statsKpiGrid}>
+              {/* KPI 1: Total Tickets */}
+              <View style={[styles.statsKpiCard, { borderTopColor: COLORS.primary }]}>
+                <View style={styles.statsKpiHeader}>
+                  <View style={[styles.statsKpiIconBox, { backgroundColor: COLORS.primarySoft }]}>
+                    <MaterialCommunityIcons name="ticket-percent-outline" size={18} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.statsKpiTrendPill}>
+                    <Text style={styles.statsKpiTrendText}>Semana</Text>
+                  </View>
+                </View>
+                <Text style={styles.statsKpiNumber}>{stats.weeklyTotalSold.toLocaleString("es-AR")}</Text>
+                <Text style={styles.statsKpiLabel}>Tickets Totales</Text>
+                <View style={styles.statsKpiDivider} />
+                <Text style={styles.statsKpiFooter}>
+                  Promedio: <Text style={{ fontWeight: "bold" }}>{stats.weeklyAvgPerSession} tix</Text> / show
+                </Text>
+              </View>
+
+              {/* KPI 2: Ocupación Promedio */}
+              <View style={[styles.statsKpiCard, { borderTopColor: "#10B981" }]}>
+                <View style={styles.statsKpiHeader}>
+                  <View style={[styles.statsKpiIconBox, { backgroundColor: "#D1FAE5" }]}>
+                    <MaterialCommunityIcons name="chart-donut" size={18} color="#047857" />
+                  </View>
+                  <View style={[styles.statsKpiTrendPill, { backgroundColor: "#D1FAE5" }]}>
+                    <Text style={[styles.statsKpiTrendText, { color: "#047857" }]}>Ocupación</Text>
+                  </View>
+                </View>
+                <Text style={styles.statsKpiNumber}>{stats.weeklyAvgOccupancy.toFixed(1)}%</Text>
+                <Text style={styles.statsKpiLabel}>Ocupación Promedio</Text>
+                <View style={styles.statsKpiDivider} />
+                <Text style={styles.statsKpiFooter}>
+                  Capacidad: <Text style={{ fontWeight: "bold" }}>{stats.weeklyTotalCapacity.toLocaleString("es-AR")}</Text> butacas
+                </Text>
+              </View>
+
+              {/* KPI 3: Experiencia 3D */}
+              <View style={[styles.statsKpiCard, { borderTopColor: "#8B5CF6" }]}>
+                <View style={styles.statsKpiHeader}>
+                  <View style={[styles.statsKpiIconBox, { backgroundColor: "#EDE9FE" }]}>
+                    <MaterialCommunityIcons name="sunglasses" size={18} color="#7C3AED" />
+                  </View>
+                  <View style={[styles.statsKpiTrendPill, { backgroundColor: "#EDE9FE" }]}>
+                    <Text style={[styles.statsKpiTrendText, { color: "#7C3AED" }]}>Formato 3D</Text>
+                  </View>
+                </View>
+                <Text style={styles.statsKpiNumber}>{stats.weekly3DSold.toLocaleString("es-AR")}</Text>
+                <Text style={styles.statsKpiLabel}>Lentes 3D Semanales</Text>
+                <View style={styles.statsKpiDivider} />
+                <Text style={styles.statsKpiFooter}>
+                  Penetración: <Text style={{ fontWeight: "bold" }}>{stats.weekly3DPercent.toFixed(1)}%</Text> del total
+                </Text>
+              </View>
+
+              {/* KPI 4: Funciones Totales */}
+              <View style={[styles.statsKpiCard, { borderTopColor: "#3B82F6" }]}>
+                <View style={styles.statsKpiHeader}>
+                  <View style={[styles.statsKpiIconBox, { backgroundColor: "#DBEAFE" }]}>
+                    <MaterialCommunityIcons name="movie-open-play-outline" size={18} color="#1D4ED8" />
+                  </View>
+                  <View style={[styles.statsKpiTrendPill, { backgroundColor: "#DBEAFE" }]}>
+                    <Text style={[styles.statsKpiTrendText, { color: "#1D4ED8" }]}>Shows</Text>
+                  </View>
+                </View>
+                <Text style={styles.statsKpiNumber}>{stats.weeklyTotalSessions}</Text>
+                <Text style={styles.statsKpiLabel}>Funciones Semanales</Text>
+                <View style={styles.statsKpiDivider} />
+                <Text style={styles.statsKpiFooter}>
+                  Títulos en cartel: <Text style={{ fontWeight: "bold" }}>{Object.keys(stats.movieSales).length}</Text>
+                </Text>
+              </View>
+            </View>
+
+            {/* Highlights Grid */}
+            <View style={styles.statsHighlightsRow}>
+              {stats.mostViewedMovie ? (
+                <View style={styles.statsHighlightCard}>
+                  <View style={styles.statsHighlightHeader}>
+                    <View style={[styles.statsHighlightIconBox, { backgroundColor: "#FEF3C7" }]}>
+                      <MaterialCommunityIcons name="crown" size={16} color="#D97706" />
+                    </View>
+                    <Text style={styles.statsHighlightBadge}>Película Más Vista</Text>
+                  </View>
+                  <Text style={styles.statsHighlightTitle} numberOfLines={1}>{stats.mostViewedMovie}</Text>
+                  <View style={styles.statsHighlightValueRow}>
+                    <Text style={styles.statsHighlightValue}>{stats.mostViewedMovieCount} tix</Text>
+                    <Text style={styles.statsHighlightSubvalue}>({stats.mostViewedMovieShare.toFixed(1)}% de la semana)</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {stats.leastViewedMovie ? (
+                <View style={styles.statsHighlightCard}>
+                  <View style={styles.statsHighlightHeader}>
+                    <View style={[styles.statsHighlightIconBox, { backgroundColor: "#FEE2E2" }]}>
+                      <MaterialCommunityIcons name="trending-down" size={16} color="#DC2626" />
+                    </View>
+                    <Text style={styles.statsHighlightBadge}>Película Menos Vista</Text>
+                  </View>
+                  <Text style={styles.statsHighlightTitle} numberOfLines={1}>{stats.leastViewedMovie}</Text>
+                  <View style={styles.statsHighlightValueRow}>
+                    <Text style={[styles.statsHighlightValue, { color: "#DC2626" }]}>{stats.leastViewedMovieCount} tix</Text>
+                    <Text style={styles.statsHighlightSubvalue}>Oportunidad comercial</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {stats.bestDayLabel ? (
+                <View style={styles.statsHighlightCard}>
+                  <View style={styles.statsHighlightHeader}>
+                    <View style={[styles.statsHighlightIconBox, { backgroundColor: "#D1FAE5" }]}>
+                      <MaterialCommunityIcons name="calendar-star" size={16} color="#059669" />
+                    </View>
+                    <Text style={styles.statsHighlightBadge}>Día de Mayor Venta</Text>
+                  </View>
+                  <Text style={styles.statsHighlightTitle} numberOfLines={1}>{stats.bestDayLabel}</Text>
+                  <View style={styles.statsHighlightValueRow}>
+                    <Text style={[styles.statsHighlightValue, { color: "#059669" }]}>{stats.bestDaySales} tix</Text>
+                    <Text style={styles.statsHighlightSubvalue}>({stats.bestDayOccupancy.toFixed(1)}% ocupación)</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {stats.bestRoom !== -1 ? (
+                <View style={styles.statsHighlightCard}>
+                  <View style={styles.statsHighlightHeader}>
+                    <View style={[styles.statsHighlightIconBox, { backgroundColor: "#DBEAFE" }]}>
+                      <MaterialCommunityIcons name="theater" size={16} color="#2563EB" />
+                    </View>
+                    <Text style={styles.statsHighlightBadge}>Sala Estrella</Text>
+                  </View>
+                  <Text style={styles.statsHighlightTitle} numberOfLines={1}>Sala {stats.bestRoom}</Text>
+                  <View style={styles.statsHighlightValueRow}>
+                    <Text style={[styles.statsHighlightValue, { color: "#2563EB" }]}>{stats.bestRoomSales} tix</Text>
+                    <Text style={styles.statsHighlightSubvalue}>({stats.bestRoomOccupancy.toFixed(1)}% ocupación)</Text>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+
+            {/* Record Function Hero Banner */}
+            {stats.maxOccupationSession ? (
+              <View style={styles.statsHeroBanner}>
+                <View style={styles.statsHeroFlameCircle}>
+                  <MaterialCommunityIcons name="fire" size={24} color="#EF4444" />
+                </View>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <View style={styles.statsHeroBadgeRow}>
+                    <Text style={styles.statsHeroBadgeLabel}>FUNCIÓN RÉCORD DE LA SEMANA</Text>
+                    <View style={styles.statsHeroPill}>
+                      <Text style={styles.statsHeroPillText}>
+                        {Math.round(stats.maxOccupationSession.rate * 100)}% LLENO
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.statsHeroMovie} numberOfLines={1}>
+                    {stats.maxOccupationSession.pelicula}
+                  </Text>
+                  <Text style={styles.statsHeroDetails}>
+                    {stats.maxOccupationSession.diaLabel} a las {stats.maxOccupationSession.inicio} hs • Sala {stats.maxOccupationSession.sala}
+                  </Text>
+                  {/* Progress bar */}
+                  <View style={styles.statsHeroProgressBg}>
+                    <View 
+                      style={[
+                        styles.statsHeroProgressFill, 
+                        { width: `${Math.min(100, Math.round(stats.maxOccupationSession.rate * 100))}%` }
+                      ]} 
+                    />
+                  </View>
+                </View>
+                <View style={styles.statsHeroNumbers}>
+                  <Text style={styles.statsHeroTicketsSold}>
+                    {stats.maxOccupationSession.soldSeats}
+                  </Text>
+                  <Text style={styles.statsHeroTicketsCap}>
+                    / {stats.maxOccupationSession.capacity} tix
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        )}
+
+        {/* 2. Top Películas Ranking */}
+        {showPeliculas && (
+          <View style={styles.statsModernSection}>
+            <View style={styles.statsCardContainer}>
+              <View style={styles.statsCardHeader}>
+                <MaterialCommunityIcons name="trophy-outline" size={18} color="#EAB308" style={{ marginRight: 8 }} />
+                <Text style={styles.statsCardTitle}>Ranking de Películas en Cartelera (Tickets)</Text>
+              </View>
+              <View style={styles.statsCardBody}>
+                {sortedMovies.map(([movie, sales], index) => {
+                  const percentage = ((sales as number) / maxMovieSales) * 100;
+                  const shareOfTotal = stats.weeklyTotalSold > 0 ? ((sales as number) / stats.weeklyTotalSold) * 100 : 0;
+                  const sessionsCount = stats.movieSessions[movie] || 0;
+                  const rankIcons = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣"];
+
+                  return (
+                    <View key={movie} style={styles.modernRankRow}>
+                      <Text style={styles.modernRankIcon}>{rankIcons[index] || `#${index + 1}`}</Text>
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.modernRankInfoRow}>
+                          <Text style={styles.modernRankMovieName} numberOfLines={1}>
+                            {movie}
+                          </Text>
+                          <View style={styles.modernRankNumbersCol}>
+                            <Text style={styles.modernRankSalesText}>{sales as number} tix</Text>
+                            <Text style={styles.modernRankShareText}>({shareOfTotal.toFixed(1)}%)</Text>
+                          </View>
+                        </View>
+                        <View style={styles.modernRankProgressBarBg}>
+                          <View
+                            style={[
+                              styles.modernRankProgressBarFill,
+                              {
+                                width: `${percentage}%`,
+                                backgroundColor: index === 0 ? COLORS.primary : index === 1 ? "#3B82F6" : index === 2 ? "#10B981" : "#64748B",
+                              },
+                            ]}
+                          />
+                        </View>
+                        <Text style={styles.modernRankFooterDetails}>
+                          {sessionsCount} funciones programadas
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* 3. Días de la Semana & Franjas Horarias */}
+        {showDias && (
+          <View style={styles.statsModernSection}>
+            {/* Franjas Horarias (Turnos) */}
+            <View style={styles.statsCardContainer}>
+              <View style={styles.statsCardHeader}>
+                <MaterialCommunityIcons name="clock-time-four-outline" size={18} color="#3B82F6" style={{ marginRight: 8 }} />
+                <Text style={styles.statsCardTitle}>Distribución por Franjas Horarias (Turnos)</Text>
+              </View>
+              <View style={styles.timeSlotsGrid}>
+                {Object.values(stats.timeSlots).map((slot) => {
+                  const occ = slot.capacity > 0 ? (slot.sold / slot.capacity) * 100 : 0;
+                  const percentOfTotal = stats.weeklyTotalSold > 0 ? (slot.sold / stats.weeklyTotalSold) * 100 : 0;
+                  return (
+                    <View key={slot.key} style={styles.timeSlotCard}>
+                      <View style={styles.timeSlotHeader}>
+                        <MaterialCommunityIcons name={slot.icon} size={18} color={COLORS.primary} />
+                        <Text style={styles.timeSlotTitle}>{slot.label}</Text>
+                      </View>
+                      <Text style={styles.timeSlotSub}>{slot.sub}</Text>
+                      <Text style={styles.timeSlotSold}>{slot.sold.toLocaleString("es-AR")} tix</Text>
+                      <View style={styles.timeSlotProgressBg}>
+                        <View style={[styles.timeSlotProgressFill, { width: `${Math.min(100, occ)}%` }]} />
+                      </View>
+                      <View style={styles.timeSlotFooterRow}>
+                        <Text style={styles.timeSlotFooterText}>{slot.sessions} funciones</Text>
+                        <Text style={styles.timeSlotFooterOcc}>{occ.toFixed(0)}% ocup.</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Días de la Semana (Tickets & 3D) */}
+            <View style={[styles.chartsGrid, windowWidth < 1200 && { flexDirection: "column" }]}>
+              {/* Ventas por Día */}
+              <View style={[styles.chartContainer, { flex: windowWidth < 1200 ? undefined : 1 }, windowWidth < 1200 && { width: "100%" }]}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <Text style={styles.chartTitle}>Ventas por Día de la Semana</Text>
+                  <View style={styles.weekendBadge}>
+                    <Text style={styles.weekendBadgeText}>
+                      Finde: {stats.weekendSold} tix
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.chartBody}>
+                  {stats.dayDetails.map((day) => {
+                    const percentage = (day.sold / maxDaySales) * 100;
+                    const isPeak = day.sold === stats.bestDaySales && stats.bestDaySales > 0;
+                    return (
+                      <View key={day.key} style={styles.chartRow}>
+                        <View style={styles.chartRowInfo}>
+                          <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            {isPeak && <MaterialCommunityIcons name="star" size={13} color="#EAB308" style={{ marginRight: 4 }} />}
+                            <Text style={[styles.chartRowName, isPeak && { color: COLORS.primary, fontWeight: "900" }]} numberOfLines={1}>
+                              {day.label} {day.isWeekend && "(FDS)"}
+                            </Text>
+                          </View>
+                          <Text style={[styles.chartRowValue, isPeak && { color: COLORS.primary }]}>
+                            {day.sold} tix ({day.occupancy.toFixed(0)}%)
+                          </Text>
+                        </View>
+                        <View style={styles.chartBarTrack}>
+                          <View
+                            style={[
+                              styles.chartBarFill,
+                              {
+                                width: `${percentage}%`,
+                                backgroundColor: isPeak ? COLORS.primary : day.isWeekend ? "#10B981" : "#3B82F6",
+                              },
+                            ]}
+                          />
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Lentes 3D por Día */}
+              <View style={[styles.chartContainer, { flex: windowWidth < 1200 ? undefined : 1, marginLeft: windowWidth < 1200 ? 0 : 16, marginTop: windowWidth < 1200 ? 16 : 0 }, windowWidth < 1200 && { width: "100%" }]}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <Text style={styles.chartTitle}>Lentes 3D por Día de la Semana</Text>
+                  <View style={[styles.weekendBadge, { backgroundColor: "#EDE9FE" }]}>
+                    <Text style={[styles.weekendBadgeText, { color: "#7C3AED" }]}>
+                      Total: {stats.weekly3DSold} tix
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.chartBody}>
+                  {DAYS_OF_WEEK.map((day) => {
+                    const sales = stats.day3DSales[day.key] || 0;
+                    const percentage = maxDay3DSales > 0 ? (sales / maxDay3DSales) * 100 : 0;
+                    return (
+                      <View key={day.key} style={styles.chartRow}>
+                        <View style={styles.chartRowInfo}>
+                          <Text style={styles.chartRowName} numberOfLines={1}>
+                            {day.label}
+                          </Text>
+                          <Text style={[styles.chartRowValue, { color: "#7C3AED" }]}>{sales} lentes</Text>
+                        </View>
+                        <View style={styles.chartBarTrack}>
+                          <View style={[styles.chartBarFill, { width: `${percentage}%`, backgroundColor: "#8B5CF6" }]} />
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* 4. Rendimiento por Sala */}
+        {showSalas && (
+          <View style={styles.statsModernSection}>
+            <View style={styles.statsCardContainer}>
+              <View style={styles.statsCardHeader}>
+                <MaterialCommunityIcons name="theater" size={18} color="#3B82F6" style={{ marginRight: 8 }} />
+                <Text style={styles.statsCardTitle}>Matriz de Rendimiento por Salas de Cine</Text>
+              </View>
+              <View style={[styles.statsCardBody, { flexDirection: "row", flexWrap: "wrap", gap: 12 }]}>
+                {stats.roomDetails.map((item) => {
+                  const percentage = ((item.sold as number) / maxRoomSales) * 100;
+                  const isTopRoom = item.room === stats.bestRoom;
+                  let occColor = "#3B82F6";
+                  if (item.occupancy > 50) occColor = "#EF4444";
+                  else if (item.occupancy >= 25) occColor = "#10B981";
+
+                  return (
+                    <View key={item.room} style={[styles.modernRoomCell, { width: isMobile ? "100%" : "31.5%" }, isTopRoom && styles.modernRoomCellStar]}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                          <MaterialCommunityIcons name="theater" size={15} color={isTopRoom ? COLORS.primary : COLORS.text} style={{ marginRight: 4 }} />
+                          <Text style={[styles.modernRoomTitle, isTopRoom && { color: COLORS.primary }]}>
+                            Sala {item.room} {isTopRoom && "⭐"}
+                          </Text>
+                        </View>
+                        <View style={[styles.modernRoomBadge, { backgroundColor: `${occColor}20` }]}>
+                          <Text style={[styles.modernRoomBadgeText, { color: occColor }]}>
+                            {item.occupancy.toFixed(0)}% Ocup.
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.modernRoomNumbersRow}>
+                        <Text style={styles.modernRoomTicketsText}>{item.sold} tickets</Text>
+                        <Text style={styles.modernRoomCapText}>{item.sessions} shows</Text>
+                      </View>
+                      <View style={styles.chartBarTrack}>
+                        <View style={[styles.chartBarFill, { width: `${percentage}%`, backgroundColor: occColor }]} />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* 5. Alertas Operativas (Hoy) */}
+        {showAlertas && (
+          <View style={styles.statsModernSection}>
+            <View style={styles.statsAlertsSectionModern}>
+              <View style={styles.statsAlertsHeaderRow}>
+                <MaterialCommunityIcons name="shield-alert-outline" size={18} color="#EF4444" style={{ marginRight: 8 }} />
+                <Text style={styles.statsAlertsTitle}>Alertas Operativas del Día</Text>
+              </View>
+              {stats.recordingRiskShows.length === 0 && stats.guideNeededShows.length === 0 ? (
+                <View style={styles.noAlertsContainerModern}>
+                  <MaterialCommunityIcons name="check-decagram" size={18} color="#10B981" style={{ marginRight: 8 }} />
+                  <Text style={styles.noAlertsTextModern}>Todas las salas operan con normalidad. Sin alertas de aforo hoy.</Text>
+                </View>
+              ) : (
+                <View style={styles.alertsList}>
+                  {stats.recordingRiskShows.length > 0 && (
+                    <View style={[styles.alertItem, styles.alertItemRisk]}>
+                      <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                        <MaterialCommunityIcons name="video-vintage" size={16} color="#EF4444" style={{ marginRight: 8 }} />
+                        <Text style={styles.alertItemText} numberOfLines={2}>
+                          Atención: Hay <Text style={{ fontWeight: "bold" }}>{stats.recordingRiskShows.length}</Text> funciones con ocupación mínima (&lt; 2%). Revisar sala periódicamente.
+                        </Text>
+                      </View>
+                      <View style={[styles.alertBadge, { backgroundColor: "#EF4444" }]}>
+                        <Text style={styles.alertBadgeText}>Riesgo de Grabación</Text>
+                      </View>
+                    </View>
+                  )}
+                  {stats.guideNeededShows.map((show, idx) => (
+                    <View key={`guide-${idx}`} style={[styles.alertItem, styles.alertItemGuide]}>
+                      <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                        <MaterialCommunityIcons name="account-multiple-check" size={16} color="#10B981" style={{ marginRight: 8 }} />
+                        <Text style={styles.alertItemText} numberOfLines={2}>
+                          <Text style={{ fontWeight: "bold" }}>{show.inicio} hs</Text> • Sala {show.sala} | {show.pelicula} (Ocupación: {show.capacity !== undefined && show.soldSeats !== undefined && show.capacity > 0 ? ((show.soldSeats/show.capacity)*100).toFixed(0) : 0}%)
+                        </Text>
+                      </View>
+                      <View style={[styles.alertBadge, { backgroundColor: "#10B981" }]}>
+                        <Text style={styles.alertBadgeText}>Guía de Sala Requerido</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const formattedWeekLabel = useApiData
+    ? ""
+    : (savedWeekly?.startDate
+      ? `Semana del ${savedWeekly.startDate}`
+      : "Programación Semanal");
+
+  const hasHeaderContent = !!formattedWeekLabel || !useApiData || (useApiData && !!apiError);
+
+  return (
+    <View style={styles.container}>
+      {/* Header Info */}
+      {hasHeaderContent ? (
+        <View style={[styles.header, { justifyContent: "center", paddingVertical: 12 }]}>
+          <View style={[styles.headerInfo, { alignItems: "center", width: "100%" }]}>
+            {formattedWeekLabel ? (
+              <Text style={styles.headerTitle}>{formattedWeekLabel}</Text>
+            ) : null}
+            {!useApiData && (
+              <Text style={[styles.headerSubtitle, { textAlign: "center" }]}>
+                La programación se obtiene a partir del reporte cargado y guardado en la sección de Servicios &gt; Programación.
+              </Text>
+            )}
+            {useApiData && apiError && (
+              <View style={styles.apiErrorBanner}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#B45309" style={{ marginRight: 4 }} />
+                <Text style={styles.apiErrorText}>{apiError}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      ) : null}
+
+      {/* Week Selector Bar (if in API mode) */}
+      {useApiData && availableWeeks.length > 1 && (() => {
+        const currentIndex = availableWeeks.indexOf(selectedWeekStart);
+        const canGoPrev = currentIndex > 0;
+        const canGoNext = currentIndex < availableWeeks.length - 1;
+        const currentWeek = getMovieWeekStartForNow();
+        const isCurrent = selectedWeekStart === currentWeek;
+        
+        let label = formatWeekRange(selectedWeekStart);
+        if (isCurrent) {
+          label += " (Actual)";
+        } else if (selectedWeekStart > currentWeek) {
+          label += " (Preventa)";
+        } else if (selectedWeekStart < currentWeek) {
+          label += " (Pasada)";
+        }
+        
+        return (
+          <View style={styles.singleWeekSelectorContainer}>
+            <TouchableOpacity
+              disabled={!canGoPrev}
+              onPress={() => setSelectedWeekStart(availableWeeks[currentIndex - 1])}
+              style={[styles.arrowButton, !canGoPrev && styles.arrowButtonDisabled]}
+            >
+              <MaterialCommunityIcons name="chevron-left" size={20} color={canGoPrev ? COLORS.text : COLORS.muted} />
+            </TouchableOpacity>
+            
+            <View style={styles.singleWeekLabelContainer}>
+              <Text style={styles.singleWeekLabelText}>{label}</Text>
+            </View>
+
+            <TouchableOpacity
+              disabled={!canGoNext}
+              onPress={() => setSelectedWeekStart(availableWeeks[currentIndex + 1])}
+              style={[styles.arrowButton, !canGoNext && styles.arrowButtonDisabled]}
+            >
+              <MaterialCommunityIcons name="chevron-right" size={20} color={canGoNext ? COLORS.text : COLORS.muted} />
+            </TouchableOpacity>
+          </View>
+        );
+      })()}
+
+
+      {/* Main Grid View */}
+      <View style={styles.gridContainer}>
+        <ScrollView ref={verticalScrollRef} style={styles.verticalScrollView} bounces={false}>
+
+          {/* Days Tabs Selection (Index 0 or 1 depending on stats visibility) */}
+          <View style={[
+            styles.tabBarContainer,
+            !isMobile && {
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingHorizontal: 16,
+            }
+          ]}>
+            {!isMobile && (
+              <View style={{ flex: 1, minWidth: 0 }} />
+            )}
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tabBar}
+              style={!isMobile ? {
+                flexShrink: 1,
+                flexGrow: 0,
+                minWidth: 0,
+              } : undefined}
+            >
+              {DAYS_OF_WEEK.map((day) => {
+                const isActive = selectedDay === day.key;
+                return (
+                  <TouchableOpacity
+                    key={day.key}
+                    onPress={() => setSelectedDay(day.key)}
+                    style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                  >
+                    <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
+                      {day.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={[
+              styles.headerButtonsRow,
+              { paddingVertical: 6, gap: 8 },
+              !isMobile && {
+                flex: 1,
+                flexShrink: 0,
+                minWidth: "max-content" as any,
+                flexDirection: "row",
+                justifyContent: "flex-end",
+                alignItems: "center",
+              },
+              isMobile && {
+                flexDirection: "row",
+                flexWrap: "wrap",
+                justifyContent: "center",
+                alignSelf: "stretch",
+                borderTopWidth: 1,
+                borderTopColor: COLORS.border,
+                paddingVertical: 10,
+                paddingHorizontal: 8,
+                backgroundColor: COLORS.card,
+              }
+            ]}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (hasSavedProgramming) {
+                      setAdjustShowtimes(prev => !prev);
+                    } else {
+                      const msg = "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios.";
+                      if (Platform.OS === "web") {
+                        alert(msg);
+                      } else {
+                        Alert.alert("Información", msg);
+                      }
+                    }
+                  }}
+                  style={[
+                    styles.headerAdjustToggle,
+                    !hasSavedProgramming && styles.headerAdjustToggleDisabled
+                  ]}
+                  activeOpacity={hasSavedProgramming ? 0.8 : 1}
+                >
+                  <MaterialCommunityIcons
+                    name={adjustShowtimes && hasSavedProgramming ? "checkbox-marked" : "checkbox-blank-outline"}
+                    size={18}
+                    color={adjustShowtimes && hasSavedProgramming ? COLORS.primary : COLORS.muted}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={[
+                    styles.headerAdjustToggleText,
+                    !hasSavedProgramming && styles.headerAdjustToggleTextDisabled
+                  ]}>
+                    Ajustar horarios de salida
+                  </Text>
+                </TouchableOpacity>
+                
+                <Text
+                  onPress={() => {
+                    const msg = hasSavedProgramming
+                      ? "Se ajustan los horarios de salida reales con la programación guardada por el sector de servicios."
+                      : "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios.";
+                    if (Platform.OS === "web") {
+                      alert(msg);
+                    } else {
+                      Alert.alert("Ajustar Horarios de Salida", msg);
+                    }
+                  }}
+                  style={{ marginLeft: 6, cursor: "help", display: "inline-flex", alignItems: "center", justifyContent: "center" } as any}
+                  {...({
+                    title: hasSavedProgramming
+                      ? "Se ajustan los horarios de salida reales con la programación guardada por el sector de servicios."
+                      : "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios."
+                  } as any)}
+                >
+                  <MaterialCommunityIcons 
+                    name="information" 
+                    size={20} 
+                    color={hasSavedProgramming ? "#3B82F6" : "#94A3B8"} 
+                  />
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setViewMode(prev => prev === "grid" ? "list" : "grid")}
+                style={styles.toggleViewButton}
+                activeOpacity={0.8}
+              >
+                <MaterialCommunityIcons
+                  name={viewMode === "grid" ? "view-list" : "view-grid"}
+                  size={18}
+                  color={COLORS.text}
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={styles.toggleViewButtonText}>
+                  {viewMode === "grid" ? "Modo Lista" : "Modo Grilla"}
+                </Text>
+              </TouchableOpacity>
+
+              {useApiData && (
+                <TouchableOpacity
+                  onPress={handleManualSync}
+                  disabled={syncing}
+                  style={styles.apiSyncButton}
+                >
+                  {syncing ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
+                  ) : (
+                    <MaterialCommunityIcons name="cached" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  )}
+                  <Text style={styles.apiSyncButtonText}>
+                    {syncing ? "Sincronizando..." : "Sincronizar"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {rooms.length === 0 ? (
+            <View style={styles.emptyGridPlaceholder}>
+              <MaterialCommunityIcons name="calendar-blank" size={48} color={COLORS.muted} style={{ marginBottom: 12 }} />
+              <Text style={styles.emptyGridTitle}>No hay funciones cargadas</Text>
+              <Text style={styles.emptyGridSubtitle}>No se encontraron funciones para esta fecha o semana.</Text>
+            </View>
+          ) : viewMode === "list" ? (
+            renderListView()
+          ) : (
+            <View style={{ position: "relative", zIndex: 1 }}>
+              {/* Grid Header Row (Index 1) */}
+          <View style={[
+            styles.mainLayoutRow,
+            { zIndex: 10 },
+            Platform.OS === "web" ? { position: "sticky" as any, top: 0, backgroundColor: COLORS.bg } : {}
+          ]}>
+            {/* Corner intersection block */}
+            <View style={[styles.cornerHeaderCell, { width: currentRoomColWidth }]}>
+              {isCollapsed ? (
+                <MaterialCommunityIcons name="theater" size={14} color={COLORS.textSoft} />
+              ) : (
+                <View style={styles.cornerContent}>
+                  <MaterialCommunityIcons name="theater" size={14} color={COLORS.textSoft} />
+                  <Text style={styles.cornerText}>Salas</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Horizontal Scroll for hours header only */}
+            <ScrollView
+              ref={headerScrollRef}
+              horizontal
+              bounces={false}
+              scrollEnabled={false}
+              showsHorizontalScrollIndicator={false}
+              style={styles.timelineHorizontalScroll}
+            >
+              <View style={{ width: timelineWidth }}>
+                <View style={styles.hourHeaderRow}>
+                  {dynamicHoursArray.map((hourText, idx) => (
+                    <View key={idx} style={[styles.hourHeaderCell, { width: HOUR_WIDTH }]}>
+                      <Text style={styles.hourHeaderText}>{hourText}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+
+          {/* Grid Content Row (Index 2) */}
+          <View style={styles.mainLayoutRow}>
+            {/* Rooms fixed left column */}
+            <View style={[styles.roomsColumn, { width: currentRoomColWidth }]}>
+              {rooms.map((salaNum) => (
+                <View key={salaNum} style={[styles.roomLabelCell, { width: currentRoomColWidth }]}>
+                  <Text style={styles.roomLabelText}>
+                    {isCollapsed ? `${salaNum}` : `Sala ${salaNum}`}
+                  </Text>
+                </View>
+              ))}
+              {/* Bottom spacer to align with scrollbar space */}
+              {SCROLLBAR_HEIGHT > 0 && (
+                <View style={{ height: SCROLLBAR_HEIGHT, backgroundColor: COLORS.card }} />
+              )}
+            </View>
+
+            {/* Scrollable Timeline */}
+            <ScrollView
+              ref={(el) => {
+                timelineScrollRef.current = el;
+                handleScrollRef(el);
+              }}
+              horizontal
+              bounces={false}
+              showsHorizontalScrollIndicator={true}
+              style={styles.timelineHorizontalScroll}
+              contentContainerStyle={{ paddingBottom: SCROLLBAR_HEIGHT }}
+              onScroll={handleGridScroll}
+              scrollEventThrottle={16}
+            >
+              <View style={{ width: timelineWidth, position: "relative" }}>
+                {/* Timeline Grid & Cards */}
+                <View style={[styles.gridAndCardsContainer, { height: rooms.length * ROW_HEIGHT }]}>
+                  {/* Grid Lines Background */}
+                  <View style={StyleSheet.absoluteFill}>
+                    {dynamicHoursArray.map((_, idx) => (
+                      <View
+                        key={idx}
+                        style={[
+                          styles.gridLineColumn,
+                          {
+                            left: idx * HOUR_WIDTH,
+                            width: 1,
+                            backgroundColor: COLORS.border,
+                            position: "absolute",
+                            top: 0,
+                            bottom: 0,
+                          },
+                        ]}
+                      />
+                    ))}
+                    {/* Final closing line */}
+                    <View
+                      style={{
+                        left: timelineWidth - 1,
+                        width: 1,
+                        backgroundColor: COLORS.border,
+                        position: "absolute",
+                        top: 0,
+                        bottom: 0,
+                      }}
+                    />
+                  </View>
+
+                  {/* Rows containing the movie cards (zIndex: 2) */}
+                  {rooms.map((salaNum, roomIndex) => {
+                    const showsInSala = shows.filter((s) => s.sala === salaNum);
+                    return (
+                      <View
+                        key={salaNum}
+                        style={[
+                          styles.timelineRow,
+                          {
+                            top: roomIndex * ROW_HEIGHT,
+                            height: ROW_HEIGHT,
+                          },
+                        ]}
+                      >
+                        {showsInSala.map((show, showIdx) => {
+                          const { left, width } = getPositionAndWidth(show);
+                          const isEvent = show.isEvent;
+                          const movieAccentColor = isEvent ? COLORS.betaBorder : getMovieColor(show.pelicula);
+                          const is3D = !isEvent && (/3d/i.test(show.pelicula) || /3d/i.test(show.sessionFormat || ""));
+                          const showAds = !isEvent && width > 50; // show ads prefix block if card is wide enough and not an event
+
+                          const status = getShowStatus(show);
+                          const isPast = status === "PAST";
+                          const isPlaying = status === "PLAYING";
+
+                          const cap = show.capacity;
+                          const sold = show.soldSeats;
+                          const hasSalesData = cap !== undefined && cap > 0 && sold !== undefined;
+                          const occupancyRate = hasSalesData && sold !== undefined && cap !== undefined ? Math.min(1, Math.max(0, sold / cap)) : 0;
+
+                          let fillBarColor = "#10B981"; // Low occupancy green (default)
+                          if (occupancyRate >= 0.8) {
+                            fillBarColor = "#EF4444"; // Red
+                          } else if (occupancyRate >= 0.5) {
+                            fillBarColor = "#F59E0B"; // Orange/Yellow
+                          }
+
+                          const adsBgColor = hasSalesData
+                            ? (is3D ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.05)")
+                            : "transparent";
+
+                          const adsBorderColor = is3D ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.1)";
+
+                          return (
+                            <TouchableOpacity
+                              key={showIdx}
+                              activeOpacity={0.7}
+                              style={[
+                                styles.movieCard,
+                                {
+                                  left,
+                                  width,
+                                  borderLeftColor: movieAccentColor,
+                                },
+                                is3D
+                                  ? {
+                                      backgroundColor: movieAccentColor,
+                                      borderColor: movieAccentColor,
+                                    }
+                                  : isEvent
+                                  ? {
+                                      backgroundColor: COLORS.betaBg,
+                                      borderColor: COLORS.betaBorder,
+                                      borderWidth: 1,
+                                    }
+                                  : {
+                                      backgroundColor: COLORS.card,
+                                    },
+                                isPast && { opacity: 0.45 },
+                                isPlaying && {
+                                  borderColor: "#10B981",
+                                  borderWidth: 2,
+                                  ...Platform.select({
+                                    web: {
+                                      boxShadow: "0 0 10px rgba(16, 185, 129, 0.4)",
+                                    },
+                                  }),
+                                },
+                              ]}
+                              onPress={() => setSelectedShow(show)}
+                            >
+                              {/* Barra de llenado de capacidad (antes publicidad) */}
+                              {showAds && (
+                                <View
+                                  style={[
+                                    styles.adsPrefix,
+                                    {
+                                      backgroundColor: adsBgColor,
+                                      borderRightColor: adsBorderColor,
+                                      justifyContent: "flex-end",
+                                      overflow: "hidden",
+                                    },
+                                  ]}
+                                >
+                                  {hasSalesData && (
+                                    <View
+                                      style={{
+                                        height: `${(occupancyRate * 100).toFixed(0)}%` as any,
+                                        width: "100%",
+                                        backgroundColor: fillBarColor,
+                                      }}
+                                    />
+                                  )}
+                                </View>
+                              )}
+
+                              {/* Card Content */}
+                              <View style={[styles.movieCardContent, showAds && { paddingLeft: 15 * MINUTE_WIDTH + 6 }]}>
+                                <View style={styles.movieCardHeaderRow}>
+                                  {isPlaying && <View style={styles.playingDot} />}
+                                  <Text
+                                    style={[
+                                      styles.movieCardTitle, 
+                                      is3D && { color: "#FFFFFF" },
+                                      isEvent && { color: COLORS.text }
+                                    ]}
+                                    numberOfLines={1}
+                                  >
+                                    {show.pelicula}{is3D && !/3d/i.test(show.pelicula) ? " (3D)" : ""}
+                                  </Text>
+                                </View>
+                                <View style={styles.movieCardFooter}>
+                                  <Text
+                                    style={[
+                                      styles.movieCardTime, 
+                                      is3D && { color: "#FFFFFF" },
+                                      isEvent && { color: COLORS.textSoft }
+                                    ]}
+                                    numberOfLines={1}
+                                  >
+                                    {show.inicio} - {show.fin}
+                                  </Text>
+                                  {show.isEvent && (
+                                    <View style={{ flexDirection: "row", gap: 3, marginLeft: 6 }}>
+                                      {show.desayuno && <Text style={{ fontSize: 10 }}>☕</Text>}
+                                      {show.combo && <Text style={{ fontSize: 10 }}>🍿</Text>}
+                                    </View>
+                                  )}
+                                  {show.isSimulated && (() => {
+                                    const rate = show.capacity !== undefined && show.capacity > 0 && show.soldSeats !== undefined ? show.soldSeats / show.capacity : 0;
+                                    const sold = show.soldSeats ?? 0;
+                                    let alertColor = "";
+                                    let alertText = "";
+                                    if (rate < 0.02 && sold > 0) {
+                                      alertColor = "#EF4444";
+                                      alertText = "⚠️ Riesgo";
+                                    } else if (rate > 0.60) {
+                                      alertColor = "#10B981";
+                                      alertText = "👤 Guía";
+                                    }
+                                    return (
+                                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                        <View style={styles.cardSoldContainer}>
+                                          <MaterialCommunityIcons name="ticket" size={11} color="#EAB308" style={{ marginRight: 2 }} />
+                                          <Text style={[styles.cardSoldText, is3D ? { color: "#FFFFFF" } : { color: COLORS.primary }, { fontWeight: "bold" }]} numberOfLines={1}>
+                                            {show.soldSeats}/{show.capacity}
+                                          </Text>
+                                        </View>
+                                        {alertText ? (
+                                          <View style={[styles.cardAlertBadge, { backgroundColor: alertColor }]}>
+                                            <Text style={styles.cardAlertBadgeText} numberOfLines={1}>{alertText}</Text>
+                                          </View>
+                                        ) : null}
+                                      </View>
+                                    );
+                                  })()}
+                                  {show.calificacion ? (
+                                    <View
+                                      style={[
+                                        styles.ratingBadge,
+                                        is3D && {
+                                          backgroundColor: "rgba(255, 255, 255, 0.22)",
+                                          borderColor: "transparent",
+                                        },
+                                      ]}
+                                    >
+                                      <Text
+                                        style={[styles.ratingBadgeText, is3D && { color: "#FFFFFF" }]}
+                                        numberOfLines={1}
+                                      >
+                                        {show.calificacion}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                </View>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    );
+                  })}
+                </View>
+
+                {/* Cinema Opening Line (zIndex: 3, sits on top of cards, starts from top of Sala 1) */}
+                {openingLeft !== null && (
+                  <View
+                    style={[
+                      styles.openingLine,
+                      {
+                        left: openingLeft,
+                        height: rooms.length * ROW_HEIGHT,
+                        top: 0,
+                      },
+                    ]}
+                  >
+                    <View style={styles.openingLineBadge}>
+                      <Text style={styles.openingLineBadgeText} numberOfLines={1}>
+                        Apertura: {formatMinutesToTime(minStartMins - 30)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Current Time Line (zIndex: 4, sits on top of cards, starts from top of Sala 1) */}
+                {showCurrentTimeLine && (
+                  <View
+                    style={[
+                      styles.currentTimeLine,
+                      {
+                        left: currentTimeLeft,
+                        height: rooms.length * ROW_HEIGHT,
+                        top: 0,
+                      },
+                    ]}
+                  >
+                    <View style={[styles.currentTimeBadge, badgesOverlap && { top: 26 }]}>
+                      <Text style={styles.currentTimeBadgeText} numberOfLines={1}>
+                        Ahora: {formatMinutesToTime(currentTimeMins)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      )}
+      {useApiData && stats && renderStatsPanel()}
+      {useApiData && (
+        <TouchableOpacity
+          style={styles.downloadHtmlButton}
+          onPress={downloadWeeklyHtml}
+          activeOpacity={0.8}
+        >
+          <MaterialCommunityIcons name="eye" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+          <Text style={styles.downloadHtmlButtonText}>VER PROGRAMACIÓN SEMANAL (HTML)</Text>
+        </TouchableOpacity>
+      )}
+    </ScrollView>
+  </View>
+
+      {/* Show Details Modal */}
+      <Modal
+        visible={selectedShow !== null}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }}
+      >
+        <View style={[styles.modalOverlay, isMobile && styles.modalOverlayFullScreen]}>
+          <View style={[
+            styles.modalContent,
+            isMobile ? styles.modalContentFullScreen : (selectedShow?.isSimulated ? styles.modalContentLarge : {}),
+            isMobile && { maxHeight: windowHeight - 40 }
+          ]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalHeaderTitle}>Detalle de Función</Text>
+              <TouchableOpacity onPress={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }} style={styles.modalCloseButton}>
+                <MaterialCommunityIcons name="close" size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            {selectedShow && (
+              <ScrollView 
+                style={{ maxHeight: isMobile ? windowHeight - 150 : windowHeight - 200 }} 
+                contentContainerStyle={[styles.modalBody, isMobile && { paddingHorizontal: 0, paddingBottom: 8 }]}
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={{ flexDirection: isMobile ? "column" : "row", gap: 24, width: "100%" }}>
+                  {/* Columna Izquierda: Poster y Detalles */}
+                  <View style={{ flex: isMobile ? undefined : 1, minWidth: isMobile ? "100%" : 320 }}>
+                    {/* Fila del Poster y Cabecera */}
+                    <View style={{ flexDirection: "row", gap: 14, marginBottom: 20 }}>
+                      {selectedShow.posterUrl ? (
+                        <Image 
+                          source={{ uri: selectedShow.posterUrl }} 
+                          style={{ width: 100, height: 150, borderRadius: 8, backgroundColor: COLORS.bg }}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={{ width: 100, height: 150, borderRadius: 8, backgroundColor: COLORS.border, justifyContent: "center", alignItems: "center" }}>
+                          <MaterialCommunityIcons name="movie-roll" size={40} color={COLORS.muted} />
+                        </View>
+                      )}
+                      <View style={{ flex: 1, justifyContent: "center", gap: 6 }}>
+                        <Text style={[styles.modalMovieTitle, { fontSize: 20, lineHeight: 26, marginVertical: 0 }]} numberOfLines={3}>
+                          {selectedShow.pelicula}
+                        </Text>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                          <View style={{ backgroundColor: COLORS.primarySoft, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                            <Text style={{ color: COLORS.primary, fontWeight: "bold", fontSize: 12 }}>Sala {selectedShow.sala}</Text>
+                          </View>
+                          {selectedShow.isEvent && (
+                            <View style={{ backgroundColor: COLORS.betaBadgeBg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                              <Text style={{ color: COLORS.betaText, fontWeight: "bold", fontSize: 12 }}>Evento Especial</Text>
+                            </View>
+                          )}
+                          {selectedShow.sessionFormat && (
+                            <View style={{ backgroundColor: COLORS.border, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                              <Text style={{ color: COLORS.textSoft, fontSize: 11, fontWeight: "600" }}>{selectedShow.sessionFormat}</Text>
+                            </View>
+                          )}
+                          {selectedShow.language && (
+                            <View style={{ backgroundColor: COLORS.border, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                              <Text style={{ color: COLORS.textSoft, fontSize: 11, fontWeight: "600" }}>{selectedShow.language}</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* Resto de Detalles en una lista limpia */}
+                    <View style={{ gap: 14 }}>
+                      {selectedShow.isEvent ? (
+                        <View style={styles.detailRow}>
+                          <MaterialCommunityIcons name="information-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.detailLabel}>Detalles del Evento</Text>
+                            <Text style={styles.detailValue}>
+                              • Horario: <Text style={styles.detailHighlight}>{selectedShow.inicio} hs - {selectedShow.fin} hs</Text>{"\n"}
+                              • Duración: <Text style={styles.detailHighlight}>{getShowDuration(selectedShow)} minutos</Text>{"\n"}
+                              {selectedShow.desayuno ? "☕ Incluye Desayuno\n" : ""}
+                              {selectedShow.combo ? "🍿 Incluye Combo\n" : ""}
+                            </Text>
+                          </View>
+                        </View>
+                      ) : (
+                        <>
+                          {/* Cronograma de Proyección */}
+                          <View style={styles.detailRow}>
+                            <MaterialCommunityIcons name="projector" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.detailLabel}>Cronograma de Proyección</Text>
+                              <Text style={styles.detailValueSub}>
+                                • Encendido / Publicidad (15 min): <Text style={styles.detailHighlight}>{selectedShow.inicio} hs</Text>
+                              </Text>
+                              <Text style={styles.detailValueSub}>
+                                • Inicio de Película: <Text style={styles.detailHighlight}>{addMinutesToTimeStr(selectedShow.inicio, 15)} hs</Text>
+                              </Text>
+                              {selectedShow.creditosHoraReloj ? (
+                                <Text style={styles.detailValueSub}>
+                                  • Inicio de Créditos: <Text style={[styles.detailHighlight, { color: "#D97706" }]}>{selectedShow.creditosHoraReloj} hs</Text>
+                                  {selectedShow.horaCreditoOriginal ? ` (a las ${selectedShow.horaCreditoOriginal} de peli)` : ""}
+                                </Text>
+                              ) : null}
+                              <Text style={styles.detailValueSub}>
+                                • Finalización de Función: <Text style={styles.detailHighlight}>{selectedShow.fin} hs</Text>
+                              </Text>
+                            </View>
+                          </View>
+
+                          {/* Duración del Bloque */}
+                          <View style={styles.detailRow}>
+                            <MaterialCommunityIcons name="timer-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.detailLabel}>Duración Total del Bloque</Text>
+                              <Text style={styles.detailValue}>
+                                {getShowDuration(selectedShow)} minutos (incluye publicidad)
+                                {selectedShow.runTime ? `\n(Película: ${selectedShow.runTime} min)` : ""}
+                              </Text>
+                            </View>
+                          </View>
+                        </>
+                      )}
+
+                      {/* Calificación */}
+                      {selectedShow.calificacion ? (
+                        <View style={styles.detailRow}>
+                          <MaterialCommunityIcons name="account-alert-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.detailLabel}>Calificación</Text>
+                            <Text style={styles.detailValue}>{selectedShow.calificacion}</Text>
+                          </View>
+                        </View>
+                      ) : null}
+
+                      {/* Reparto y Dirección */}
+                      {selectedShow.filmPersons && selectedShow.filmPersons.length > 0 ? (
+                        <View style={styles.detailRow}>
+                          <MaterialCommunityIcons name="account-group-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.detailLabel}>Reparto y Dirección</Text>
+                            <Text style={[styles.detailValue, { fontSize: 13, lineHeight: 18, color: COLORS.textSoft }]}>
+                              {selectedShow.filmPersons
+                                .map((p: any) => `${p.firstName} ${p.lastName} (${p.personType === "Actor" ? "Actor" : "Director"})`)
+                                .join(", ")}
+                            </Text>
+                          </View>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  {/* Columna Derecha: Mapa de Asientos (solo si es simulada) */}
+                  {selectedShow.isSimulated && (
+                    <View style={{ 
+                      flex: isMobile ? undefined : 1.7, 
+                      minWidth: isMobile ? "100%" : 360,
+                      borderLeftWidth: isMobile ? 0 : 1, 
+                      borderLeftColor: COLORS.border, 
+                      paddingLeft: isMobile ? 0 : 24, 
+                      paddingTop: isMobile ? 20 : 0,
+                      borderTopWidth: isMobile ? 1 : 0,
+                      borderTopColor: isMobile ? COLORS.border : "transparent",
+                    }}>
+                      <Text style={[styles.detailLabel, { marginBottom: 12, fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5 }]}>
+                        Mapa de Asientos en Vivo
+                      </Text>
+
+                      {loadingSeatMap ? (
+                        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", minHeight: 200, paddingVertical: 40 }}>
+                          <ActivityIndicator size="large" color={COLORS.primary} />
+                          <Text style={{ color: COLORS.textSoft, marginTop: 12, fontSize: 13 }}>Cargando mapa de asientos...</Text>
+                        </View>
+                      ) : seatMapError ? (
+                        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", minHeight: 200, paddingVertical: 30 }}>
+                          <MaterialCommunityIcons name="alert-circle-outline" size={36} color="#EF4444" />
+                          <Text style={{ color: "#EF4444", fontWeight: "bold", marginTop: 8, fontSize: 14 }}>Error al cargar mapa</Text>
+                          <Text style={{ color: COLORS.textSoft, textAlign: "center", marginTop: 4, paddingHorizontal: 16, fontSize: 12 }}>{seatMapError}</Text>
+                        </View>
+                      ) : (seatMapData || (selectedShow && selectedShow.occupiedSeats && selectedShow.occupiedSeats.length > 0)) ? (
+                        <View style={{ alignItems: "center", width: "100%" }}>
+                          <View style={[styles.legendContainer, { marginBottom: 16 }]}>
+                            <View style={styles.legendItem}>
+                              <View style={[styles.seatBase, styles.seatAvailable]} />
+                              <Text style={styles.legendText}>Disp.</Text>
+                            </View>
+                            <View style={styles.legendItem}>
+                              <View style={[styles.seatBase, styles.seatOccupied]} />
+                              <Text style={styles.legendText}>Ocup.</Text>
+                            </View>
+                            <View style={styles.legendItem}>
+                              <View style={[styles.seatBase, styles.seatAutoAssigned]} />
+                              <Text style={styles.legendText}>Mío</Text>
+                            </View>
+                            <View style={styles.legendItem}>
+                              <View style={[styles.seatBase, styles.seatWheelchair, { justifyContent: 'center', alignItems: 'center' }]}>
+                                <MaterialCommunityIcons name="wheelchair-accessibility" size={10} color="#FFF" />
+                              </View>
+                              <Text style={styles.legendText}>Silla</Text>
+                            </View>
+                          </View>
+
+                          {renderSeatGrid(seatMapData)}
+                        </View>
+                      ) : (
+                        <Text style={{ color: COLORS.textSoft, fontSize: 13, fontStyle: "italic", textAlign: "center", paddingVertical: 40 }}>
+                          No hay mapa de asientos disponible.
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
+            )}
+
+            <TouchableOpacity onPress={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }} style={styles.modalButton}>
+              <Text style={styles.modalButtonText}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+  },
+  adjustmentBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: COLORS.card,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  adjustmentLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  adjustmentStatusText: {
+    fontSize: 13,
+    color: COLORS.text,
+    fontWeight: "500",
+  },
+  adjustmentToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bgMobile,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  adjustmentToggleText: {
+    fontSize: 13,
+    color: COLORS.text,
+    fontWeight: "600",
+  },
+  headerAdjustToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  headerAdjustToggleText: {
+    fontSize: 12,
+    color: COLORS.text,
+    fontWeight: "bold",
+  },
+  headerAdjustToggleDisabled: {
+    backgroundColor: Platform.OS === "web" ? "var(--border, #E2E8F0)" : "#E2E8F0",
+    borderColor: Platform.OS === "web" ? "var(--border, #CBD5E1)" : "#CBD5E1",
+    opacity: 0.65,
+  },
+  headerAdjustToggleTextDisabled: {
+    color: COLORS.muted,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: THEME.spacing.xl,
+    backgroundColor: COLORS.bg,
+  },
+  loadingText: {
+    marginTop: THEME.spacing.md,
+    color: COLORS.textSoft,
+    fontSize: THEME.fontSize.md,
+  },
+  noDataTitle: {
+    fontSize: THEME.fontSize.xl,
+    fontWeight: "bold",
+    color: COLORS.text,
+    marginTop: THEME.spacing.lg,
+    textAlign: "center",
+  },
+  noDataSubtitle: {
+    fontSize: THEME.fontSize.md,
+    color: COLORS.textSoft,
+    marginTop: THEME.spacing.sm,
+    textAlign: "center",
+    maxWidth: 400,
+    lineHeight: 22,
+  },
+  header: {
+    paddingHorizontal: THEME.spacing.lg,
+    paddingTop: THEME.spacing.md,
+    paddingBottom: THEME.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerInfo: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: COLORS.text,
+    textAlign: "center",
+  },
+  headerSubtitle: {
+    fontSize: 11,
+    color: COLORS.textSoft,
+    marginTop: 2,
+    textAlign: "center",
+  },
+  tabBarContainer: {
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.card,
+  },
+  tabBar: {
+    paddingHorizontal: THEME.spacing.lg,
+    paddingVertical: 6,
+    gap: THEME.spacing.sm,
+    justifyContent: "center",
+    flexGrow: 1,
+  },
+  tabButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: THEME.radius.full,
+    backgroundColor: Platform.OS === "web" ? "var(--bg, #F1F5F9)" : "#F1F5F9",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  tabButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+    ...Platform.select({
+      web: {
+        boxShadow: "0 2px 8px rgba(137, 4, 4, 0.25)",
+      },
+    }),
+  },
+  tabButtonText: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  tabButtonTextActive: {
+    color: "#FFFFFF",
+  },
+  gridContainer: {
+    flex: 1,
+  },
+  verticalScrollView: {
+    flex: 1,
+  },
+  mainLayoutRow: {
+    flexDirection: "row",
+  },
+  roomsColumn: {
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    zIndex: 3,
+    ...Platform.select({
+      web: {
+        boxShadow: "2px 0 8px rgba(0,0,0,0.05)",
+        transitionProperty: "width",
+        transitionDuration: "0.2s",
+      },
+      default: {
+        elevation: 3,
+        shadowColor: "#000",
+        shadowOffset: { width: 2, height: 0 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+    }),
+  },
+  cornerHeaderCell: {
+    height: HEADER_HEIGHT,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
+    ...Platform.select({
+      web: {
+        position: "sticky" as any,
+        top: 0,
+        zIndex: 6,
+        transitionProperty: "width",
+        transitionDuration: "0.2s",
+      },
+    }),
+  },
+  roomLabelCell: {
+    height: ROW_HEIGHT,
+    justifyContent: "center",
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    ...Platform.select({
+      web: {
+        transitionProperty: "width",
+        transitionDuration: "0.2s",
+      },
+    }),
+  },
+  roomLabelText: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  timelineHorizontalScroll: {
+    flex: 1,
+  },
+  hourHeaderRow: {
+    height: HEADER_HEIGHT,
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    ...Platform.select({
+      web: {
+        position: "sticky" as any,
+        top: 0,
+        zIndex: 5,
+      },
+    }),
+  },
+  hourHeaderCell: {
+    height: HEADER_HEIGHT,
+    justifyContent: "center",
+    alignItems: "flex-start",
+    paddingLeft: 6,
+    borderLeftWidth: 1,
+    borderLeftColor: COLORS.border,
+  },
+  hourHeaderText: {
+    fontSize: 10.5,
+    fontWeight: "bold",
+    color: COLORS.textSoft,
+  },
+  gridAndCardsContainer: {
+    position: "relative",
+  },
+  gridLineColumn: {
+    opacity: 0.25,
+  },
+  openingLine: {
+    position: "absolute",
+    width: 0,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.primary,
+    borderStyle: "dashed",
+    zIndex: 3,
+    alignItems: "center",
+  },
+  openingLineBadge: {
+    position: "absolute",
+    top: 4,
+    left: -52,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FFFFFF",
+    width: 104,
+    alignItems: "center",
+    ...Platform.select({
+      web: {
+        boxShadow: "0 2px 5px rgba(0,0,0,0.15)",
+      },
+    }),
+  },
+  openingLineBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 9.5,
+    fontWeight: "bold",
+  },
+  currentTimeLine: {
+    position: "absolute",
+    width: 0,
+    borderLeftWidth: 2,
+    borderLeftColor: "#10B981", // Emerald green
+    borderStyle: "dashed",
+    zIndex: 4,
+    alignItems: "center",
+  },
+  currentTimeBadge: {
+    position: "absolute",
+    top: 4,
+    left: -52,
+    backgroundColor: "#10B981",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FFFFFF",
+    width: 104,
+    alignItems: "center",
+    ...Platform.select({
+      web: {
+        boxShadow: "0 2px 5px rgba(0,0,0,0.15)",
+      },
+    }),
+  },
+  currentTimeBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 9.5,
+    fontWeight: "bold",
+  },
+  cornerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  cornerText: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: COLORS.textSoft,
+  },
+  timelineRow: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    justifyContent: "center",
+    zIndex: 2,
+  },
+  movieCard: {
+    position: "absolute",
+    height: ROW_HEIGHT - 10, // 44px height (vertical spacing)
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderLeftWidth: 4,
+    borderRadius: THEME.radius.sm,
+    flexDirection: "row",
+    alignItems: "stretch",
+    overflow: "hidden",
+    ...Platform.select({
+      web: {
+        boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
+        cursor: "pointer",
+        transitionDuration: "0.2s",
+      },
+      default: {
+        elevation: 1,
+      },
+    }),
+  },
+  adsPrefix: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 15 * MINUTE_WIDTH,
+    borderRightWidth: 1,
+  },
+  movieCardContent: {
+    flex: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    justifyContent: "space-between",
+  },
+  movieCardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  playingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#10B981",
+  },
+  movieCardTitle: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  movieCardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  movieCardTime: {
+    fontSize: 9.5,
+    color: COLORS.text,
+    fontWeight: "bold",
+  },
+  ratingBadge: {
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    paddingHorizontal: THEME.spacing.xs,
+    paddingVertical: 0,
+    borderRadius: 4,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+  },
+  ratingBadgeText: {
+    fontSize: 8.5,
+    fontWeight: "bold",
+    color: COLORS.muted,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: THEME.spacing.lg,
+  },
+  modalOverlayFullScreen: {
+    padding: 0,
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: COLORS.card,
+    borderRadius: THEME.radius.md,
+    padding: THEME.spacing.lg,
+    ...Platform.select({
+      web: {
+        boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+      },
+    }),
+  },
+  modalContentLarge: {
+    maxWidth: 1100,
+    width: Platform.OS === "web" ? "90%" : "98%",
+  },
+  modalContentFullScreen: {
+    width: "100%",
+    maxWidth: "100%",
+    borderRadius: 0,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 16,
+    paddingBottom: 24,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingBottom: THEME.spacing.sm,
+    marginBottom: THEME.spacing.md,
+  },
+  modalHeaderTitle: {
+    fontSize: THEME.fontSize.md + 1,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  modalCloseButton: {
+    padding: THEME.spacing.xs,
+  },
+  modalBody: {
+    marginBottom: THEME.spacing.lg,
+  },
+  modalMovieTitle: {
+    fontSize: THEME.fontSize.lg,
+    fontWeight: "900",
+    color: COLORS.text,
+    marginBottom: THEME.spacing.md,
+  },
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: THEME.spacing.sm,
+  },
+  detailIcon: {
+    marginRight: THEME.spacing.md,
+    marginTop: 2,
+  },
+  detailLabel: {
+    fontSize: THEME.fontSize.xs,
+    color: COLORS.textSoft,
+    marginBottom: 2,
+  },
+  detailValue: {
+    fontSize: THEME.fontSize.sm + 1,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  detailValueSub: {
+    fontSize: THEME.fontSize.sm,
+    color: COLORS.text,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  detailHighlight: {
+    fontWeight: "bold",
+    color: COLORS.primary,
+  },
+  modalButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: THEME.spacing.md,
+    borderRadius: THEME.radius.md,
+    alignItems: "center",
+  },
+  modalButtonText: {
+    color: "#FFFFFF",
+    fontSize: THEME.fontSize.md,
+    fontWeight: "bold",
+  },
+  apiToggleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  apiToggleButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  apiToggleText: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    fontWeight: "bold",
+  },
+  apiToggleTextActive: {
+    color: "#FFFFFF",
+  },
+  apiErrorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginTop: 4,
+  },
+  apiErrorText: {
+    fontSize: 10.5,
+    color: "#B45309",
+    fontWeight: "600",
+  },
+  cardSoldText: {
+    fontSize: 9,
+    fontWeight: "bold",
+  },
+  occupancyContainer: {
+    marginTop: 4,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+  },
+  occupancySubRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 2,
+  },
+  occupancyLabel: {
+    fontSize: 11,
+    color: COLORS.textSoft,
+  },
+  occupancyVal: {
+    fontSize: 11,
+    color: COLORS.text,
+  },
+  weekSelectorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingHorizontal: THEME.spacing.md,
+    paddingVertical: THEME.spacing.sm,
+    gap: 8,
+  },
+  weekSelectorLabel: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.textSoft,
+  },
+  weekSelectorScroll: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  weekButton: {
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  weekButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  weekButtonText: {
+    fontSize: 11,
+    color: COLORS.text,
+    fontWeight: "bold",
+  },
+  weekButtonTextActive: {
+    color: "#FFFFFF",
+  },
+  headerButtonsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  apiSyncButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  apiSyncButtonText: {
+    fontSize: 12,
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
+  arrowButton: {
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  arrowButtonDisabled: {
+    opacity: 0.4,
+  },
+  singleWeekSelectorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.card,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingHorizontal: THEME.spacing.md,
+    paddingVertical: THEME.spacing.sm,
+    gap: 16,
+  },
+  singleWeekLabelContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minWidth: 260,
+    alignItems: "center",
+  },
+  singleWeekLabelText: {
+    fontSize: 13,
+    color: COLORS.text,
+    fontWeight: "bold",
+  },
+  cardSoldContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  cardAlertBadge: {
+    marginLeft: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  cardAlertBadgeText: {
+    fontSize: 8,
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
+  statsWarningCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 0,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderLeftWidth: 4,
+    borderLeftColor: "#EAB308",
+  },
+  statsWarningText: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    fontWeight: "500",
+    flex: 1,
+  },
+  // ─── Modern Statistics Panel Styles ─────────────────────────
+  statsModernPanelContainer: {
+    backgroundColor: Platform.OS === "web" ? "var(--bg, #F8FAFC)" : "#F8FAFC",
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingBottom: 36,
+    marginTop: 24,
+  },
+  statsModernHeader: {
+    backgroundColor: COLORS.card,
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  statsModernHeaderTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  statsBadgePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(137, 4, 4, 0.15)",
+  },
+  statsBadgePillText: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: COLORS.primary,
+    marginLeft: 4,
+    letterSpacing: 0.5,
+  },
+  statsWeekTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statsWeekTagText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: COLORS.textSoft,
+  },
+  statsModernTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  statsModernIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+    ...Platform.select({
+      web: { boxShadow: "0 4px 10px rgba(137, 4, 4, 0.25)" },
+      default: { elevation: 3 },
+    }),
+  },
+  statsModernTitle: {
+    fontSize: 17,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  statsModernSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    marginTop: 2,
+  },
+  statsModernNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEFCE8",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#FEF08A",
+    marginBottom: 14,
+  },
+  statsModernNoticeText: {
+    fontSize: 11,
+    color: "#854D0E",
+    flex: 1,
+    fontWeight: "500",
+  },
+  statsSubTabsScroll: {
+    flexDirection: "row",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  statsSubTabBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  statsSubTabBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+    ...Platform.select({
+      web: { boxShadow: "0 2px 6px rgba(137, 4, 4, 0.25)" },
+      default: { elevation: 2 },
+    }),
+  },
+  statsSubTabBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSoft,
+  },
+  statsSubTabBtnTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
+  statsModernSection: {
+    paddingHorizontal: 16,
+    marginTop: 16,
+  },
+  statsKpiGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 16,
+  },
+  statsKpiCard: {
+    flex: 1,
+    minWidth: 150,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderTopWidth: 3,
+    ...Platform.select({
+      web: { boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
+      default: { elevation: 2 },
+    }),
+  },
+  statsKpiHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  statsKpiIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statsKpiTrendPill: {
+    backgroundColor: COLORS.primarySoft,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  statsKpiTrendText: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: COLORS.primary,
+  },
+  statsKpiNumber: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: COLORS.text,
+    letterSpacing: -0.5,
+  },
+  statsKpiLabel: {
+    fontSize: 11,
+    color: COLORS.textSoft,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  statsKpiDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: 8,
+  },
+  statsKpiFooter: {
+    fontSize: 10.5,
+    color: COLORS.textSoft,
+  },
+  statsHighlightsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 16,
+  },
+  statsHighlightCard: {
+    flex: 1,
+    minWidth: 150,
+    backgroundColor: COLORS.card,
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...Platform.select({
+      web: { boxShadow: "0 2px 6px rgba(0,0,0,0.03)" },
+      default: { elevation: 1 },
+    }),
+  },
+  statsHighlightHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  statsHighlightIconBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 6,
+  },
+  statsHighlightBadge: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.textSoft,
+    textTransform: "uppercase",
+  },
+  statsHighlightTitle: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  statsHighlightValueRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 4,
+  },
+  statsHighlightValue: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: COLORS.primary,
+  },
+  statsHighlightSubvalue: {
+    fontSize: 10.5,
+    color: COLORS.textSoft,
+  },
+  statsHeroBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.2)",
+    borderLeftWidth: 5,
+    borderLeftColor: "#EF4444",
+    marginBottom: 16,
+    ...Platform.select({
+      web: { boxShadow: "0 4px 12px rgba(239, 68, 68, 0.08)" },
+      default: { elevation: 2 },
+    }),
+  },
+  statsHeroFlameCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  statsHeroBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 2,
+  },
+  statsHeroBadgeLabel: {
+    fontSize: 9.5,
+    fontWeight: "900",
+    color: "#EF4444",
+    letterSpacing: 0.5,
+  },
+  statsHeroPill: {
+    backgroundColor: "#EF4444",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  statsHeroPillText: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#FFFFFF",
+  },
+  statsHeroMovie: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  statsHeroDetails: {
+    fontSize: 11,
+    color: COLORS.textSoft,
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  statsHeroProgressBg: {
+    height: 6,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  statsHeroProgressFill: {
+    height: "100%",
+    backgroundColor: "#EF4444",
+    borderRadius: 3,
+  },
+  statsHeroNumbers: {
+    alignItems: "flex-end",
+    marginLeft: 12,
+  },
+  statsHeroTicketsSold: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#EF4444",
+  },
+  statsHeroTicketsCap: {
+    fontSize: 10,
+    color: COLORS.textSoft,
+  },
+  statsCardContainer: {
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    marginBottom: 16,
+    ...Platform.select({
+      web: { boxShadow: "0 2px 8px rgba(0,0,0,0.03)" },
+      default: { elevation: 1 },
+    }),
+  },
+  statsCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 14,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  statsCardTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  statsAlertsTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  statsCardBody: {
+    gap: 12,
+  },
+  modernRankRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  modernRankIcon: {
+    fontSize: 16,
+    width: 24,
+    textAlign: "center",
+  },
+  modernRankInfoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  modernRankMovieName: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  modernRankNumbersCol: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  modernRankSalesText: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  modernRankShareText: {
+    fontSize: 10,
+    color: COLORS.textSoft,
+  },
+  modernRankProgressBarBg: {
+    height: 7,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  modernRankProgressBarFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+  modernRankFooterDetails: {
+    fontSize: 9.5,
+    color: COLORS.textSoft,
+    marginTop: 2,
+  },
+  timeSlotsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  timeSlotCard: {
+    flex: 1,
+    minWidth: 130,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F8FAFC)" : "#F8FAFC",
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  timeSlotHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 2,
+  },
+  timeSlotTitle: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  timeSlotSub: {
+    fontSize: 10,
+    color: COLORS.textSoft,
+    marginBottom: 6,
+  },
+  timeSlotSold: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.primary,
+    marginBottom: 6,
+  },
+  timeSlotProgressBg: {
+    height: 5,
+    backgroundColor: COLORS.border,
+    borderRadius: 3,
+    overflow: "hidden",
+    marginBottom: 6,
+  },
+  timeSlotProgressFill: {
+    height: "100%",
+    backgroundColor: COLORS.primary,
+    borderRadius: 3,
+  },
+  timeSlotFooterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  timeSlotFooterText: {
+    fontSize: 9.5,
+    color: COLORS.textSoft,
+  },
+  timeSlotFooterOcc: {
+    fontSize: 9.5,
+    fontWeight: "bold",
+    color: "#059669",
+  },
+  weekendBadge: {
+    backgroundColor: "#D1FAE5",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  weekendBadgeText: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#047857",
+  },
+  modernRoomCell: {
+    padding: 12,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F8FAFC)" : "#F8FAFC",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  modernRoomCellStar: {
+    borderColor: "rgba(137, 4, 4, 0.3)",
+    backgroundColor: "rgba(137, 4, 4, 0.02)",
+  },
+  modernRoomTitle: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  modernRoomBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  modernRoomBadgeText: {
+    fontSize: 9.5,
+    fontWeight: "bold",
+  },
+  modernRoomNumbersRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  modernRoomTicketsText: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  modernRoomCapText: {
+    fontSize: 10,
+    color: COLORS.textSoft,
+  },
+  statsAlertsSectionModern: {
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    marginBottom: 16,
+  },
+  statsAlertsHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  noAlertsContainerModern: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ECFDF5",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+  },
+  noAlertsTextModern: {
+    fontSize: 12,
+    color: "#065F46",
+    fontWeight: "600",
+  },
+  // ─── Standard Chart Styles ─────────────────────────────────
+  chartsGrid: {
+    flexDirection: "row",
+    marginBottom: 16,
+    width: "100%",
+  },
+  chartContainer: {
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    ...Platform.select({
+      web: { boxShadow: "0 2px 8px rgba(0,0,0,0.03)" },
+      default: { elevation: 1 },
+    }),
+  },
+  chartTitle: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  chartBody: {
+    gap: 10,
+  },
+  chartRow: {
+    width: "100%",
+  },
+  chartRowInfo: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+    marginBottom: 4,
+  },
+  chartRowName: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: COLORS.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  chartRowValue: {
+    fontSize: 11.5,
+    fontWeight: "bold",
+    color: COLORS.textSoft,
+  },
+  chartBarTrack: {
+    height: 7,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  chartBarFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+  alertsList: {
+    gap: 8,
+  },
+  alertItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: "space-between",
+  },
+  alertItemRisk: {
+    backgroundColor: "rgba(239, 68, 68, 0.06)",
+    borderColor: "rgba(239, 68, 68, 0.2)",
+  },
+  alertItemGuide: {
+    backgroundColor: "rgba(16, 185, 129, 0.06)",
+    borderColor: "rgba(16, 185, 129, 0.2)",
+  },
+  alertItemText: {
+    fontSize: 12,
+    color: COLORS.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  alertBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  alertBadgeText: {
+    fontSize: 9.5,
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
+  emptyGridPlaceholder: {
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.card,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    margin: 16,
+  },
+  emptyGridTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  emptyGridSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    textAlign: "center",
+  },
+  seatGridContainer: {
+    marginTop: 8,
+    padding: Platform.select({ web: 12, default: 4 }),
+    borderRadius: 8,
+    backgroundColor: "rgba(30, 41, 59, 0.5)",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignSelf: "stretch",
+  },
+  screenIndicator: {
+    width: "80%",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  screenLine: {
+    width: "100%",
+    height: 4,
+    backgroundColor: COLORS.textSoft,
+    borderRadius: 2,
+    opacity: 0.3,
+  },
+  screenText: {
+    fontSize: 9,
+    color: COLORS.textSoft,
+    fontWeight: "bold",
+    letterSpacing: 2,
+    marginTop: 2,
+  },
+  horizontalGridScroll: {
+    paddingBottom: 8,
+    paddingHorizontal: Platform.select({ web: 0, default: 4 }),
+    flexGrow: 0,
+  },
+  colNumberText: {
+    width: Platform.select({ web: 22, default: 14 }),
+    textAlign: "center",
+    fontSize: Platform.select({ web: 10, default: 7 }),
+    color: COLORS.textSoft,
+    marginHorizontal: Platform.select({ web: 2, default: 0.5 }),
+  },
+  rowLabelText: {
+    width: Platform.select({ web: 26, default: 16 }),
+    textAlign: "center",
+    fontSize: Platform.select({ web: 12, default: 9 }),
+    fontWeight: "bold",
+    color: COLORS.textSoft,
+  },
+  seatSpacer: {
+    width: Platform.select({ web: 22, default: 14 }),
+    height: Platform.select({ web: 22, default: 14 }),
+    marginHorizontal: Platform.select({ web: 2, default: 0.5 }),
+    backgroundColor: "transparent",
+  },
+  seatBase: {
+    width: Platform.select({ web: 22, default: 14 }),
+    height: Platform.select({ web: 22, default: 14 }),
+    borderRadius: Platform.select({ web: 5, default: 3 }),
+    marginHorizontal: Platform.select({ web: 2, default: 0.5 }),
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  seatAvailable: {
+    backgroundColor: "#10B981",
+  },
+  seatOccupied: {
+    backgroundColor: "#EF4444",
+  },
+  seatWheelchair: {
+    backgroundColor: "#3B82F6",
+  },
+  seatAutoAssigned: {
+    backgroundColor: "#F59E0B",
+  },
+  seatBlocked: {
+    backgroundColor: "#6B7280",
+  },
+  legendContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  legendText: {
+    fontSize: 10,
+    color: COLORS.textSoft,
+    marginLeft: 4,
+  },
+  viewSeatMapButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primary,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  viewSeatMapButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  aisleSpace: {
+    width: Platform.select({ web: 24, default: 12 }),
+  },
+  seatNumberText: {
+    color: "#FFFFFF",
+    fontSize: Platform.select({ web: 9, default: 6 }),
+    fontWeight: "bold",
+    textAlign: "center",
+    lineHeight: Platform.select({ web: 11, default: 8 }),
+  },
+  seatDboxBorder: {
+    borderWidth: Platform.select({ web: 1.5, default: 1 }),
+    borderColor: "#EAB308",
+  },
+  toggleViewButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  toggleViewButtonText: {
+    fontSize: 12,
+    color: COLORS.text,
+    fontWeight: "bold",
+  },
+  listContainer: {
+    padding: 12,
+    gap: 12,
+  },
+  listCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 12,
+    borderLeftWidth: 5,
+    borderLeftColor: COLORS.primary,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+      web: {
+        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
+      },
+    }),
+  },
+  listRoomBadge: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "rgba(224, 242, 254, 1)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  listRoomBadgeText: {
+    fontSize: 8,
+    color: COLORS.primary,
+    fontWeight: "bold",
+  },
+  listRoomNumberText: {
+    fontSize: 16,
+    color: COLORS.primary,
+    fontWeight: "bold",
+    lineHeight: 18,
+  },
+  listInfoContainer: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  listMovieTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  listMovieTime: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    marginBottom: 4,
+  },
+  listOccupancyContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  listOccupancyText: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    marginLeft: 4,
+  },
+  listButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 8,
+  },
+  listButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  downloadHtmlButton: {
+    backgroundColor: "#10B981",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginVertical: 16,
+    ...THEME.shadow.soft,
+  },
+  downloadHtmlButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "bold",
+    letterSpacing: 0.5,
+  },
+});

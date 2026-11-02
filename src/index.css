@@ -1,0 +1,183 @@
+@import '@mdi/font/css/materialdesignicons.min.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Light Mode — Stripe / Notion Minimalist Corporate Palette */
+  --bg: #F8FAFC;
+  --bg-mobile: #F1F5F9;
+  --card: #FFFFFF;
+  --border: #E2E8F0;
+  --text: #0F172A;
+  --muted: #64748B;
+  --text-soft: #475569;
+
+  /* Brand / Primary — Refined Cinemark Crimson */
+  --primary: #BE123C;
+  --primary-dark: #9F1239;
+  --primary-soft: #FFF1F2;
+
+  /* Semantic States */
+  --success-bg: #ECFDF5;
+  --success: #059669;
+  --success-border: #A7F3D0;
+
+  --danger: #DC2626;
+  --danger-soft: #FEF2F2;
+
+  --warning: #D97706;
+  --warning-bg: #FFFBEB;
+  --warning-border: #FDE68A;
+
+  --info: #2563EB;
+  --info-bg: #EFF6FF;
+  --info-border: #BFDBFE;
+
+  --teal: #0D9488;
+  --teal-bg: #F0FDFA;
+  --teal-border: #99F6E4;
+
+  --beta-bg: #F5F3FF;
+  --beta-border: #DDD6FE;
+  --beta-text: #6D28D9;
+  --beta-text-soft: #7C3AED;
+  --beta-badge-bg: #EDE9FE;
+  --beta-file-picker-bg: #F5F3FF;
+  --beta-file-picker-text: #4C1D95;
+  --beta-divider: #E9D5FF;
+  --beta-btn-disabled: #C4B5FD;
+}
+
+html.dark {
+  --bg: #09090B;
+  --bg-mobile: #09090B;
+  --card: #121215;
+  --border: #27272A;
+  --text: #F4F4F5;
+  --muted: #A1A1AA;
+  --text-soft: #A1A1AA;
+
+  --primary: #E11D48;
+  --primary-dark: #BE123C;
+  --primary-soft: rgba(225, 29, 72, 0.14);
+
+  --success-bg: rgba(16, 185, 129, 0.12);
+  --success: #10B981;
+  --success-border: rgba(16, 185, 129, 0.28);
+
+  --danger: #EF4444;
+  --danger-soft: rgba(239, 68, 68, 0.14);
+
+  --warning: #F59E0B;
+  --warning-bg: rgba(245, 158, 11, 0.12);
+  --warning-border: rgba(245, 158, 11, 0.28);
+
+  --info: #38BDF8;
+  --info-bg: rgba(56, 189, 248, 0.12);
+  --info-border: rgba(56, 189, 248, 0.28);
+
+  --teal: #14B8A6;
+  --teal-bg: rgba(20, 184, 166, 0.12);
+  --teal-border: rgba(20, 184, 166, 0.28);
+
+  --beta-bg: #181326;
+  --beta-border: #4C1D95;
+  --beta-text: #C4B5FD;
+  --beta-text-soft: #A78BFA;
+  --beta-badge-bg: #2E1065;
+  --beta-file-picker-bg: #1E1B4B;
+  --beta-file-picker-text: #DDD6FE;
+  --beta-divider: #3B0764;
+  --beta-btn-disabled: #4C1D95;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle minimalist scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.55);
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: rgba(82, 82, 91, 0.5);
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(113, 113, 122, 0.75);
+}
+
+/* Focus & Interactive Polish for React Native Web & HTML primitives */
+input,
+textarea,
+select {
+  font-family: inherit;
+  outline: none !important;
+  transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+}
+
+input:focus,
+textarea:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(190, 18, 60, 0.12);
+}
+
+html.dark input:focus,
+html.dark textarea:focus {
+  box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.2);
+}
+
+/* Tactile button feedback */
+button,
+[role="button"] {
+  transition: transform 140ms var(--ease-out), background-color 150ms ease, border-color 150ms ease, opacity 150ms ease;
+}
+
+button:active:not(:disabled),
+[role="button"]:active {
+  transform: scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

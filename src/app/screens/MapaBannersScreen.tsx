@@ -1,0 +1,3590 @@
+import React, { useEffect, useState, useMemo, useRef } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import * as Print from "expo-print";
+import { doc, getDoc, setDoc, onSnapshot, collection, getDocs } from "@/lib/dbService";
+import { httpsCallable } from "@/lib/dbService";
+
+import { db, functions, CINES_COLLECTION } from "../../lib/firebaseConfig";
+import { COLORS, THEME } from "../../lib/theme";
+import { useAuthUser } from "../../lib/useAuthUser";
+
+// Types
+interface BannerElement {
+  id: string;
+  name: string;
+  type: "banner" | "poster" | "proximamente" | "standee" | "estructura" | "otro";
+  movieName: string;
+  posterUrl: string;
+  x: number; // percentage (0 - 100)
+  y: number; // percentage (0 - 100)
+  width?: number; // percentage width
+  height?: number; // percentage height
+  locked?: boolean; // toggle to lock dragging
+  isCircle?: boolean; // toggle circle shape
+}
+
+interface FloorPlan {
+  id: string;
+  name: string;
+  elements: BannerElement[];
+  width?: number;
+  height?: number;
+}
+
+interface MarketingMapsConfig {
+  floors: FloorPlan[];
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+const ELEMENT_TYPE_META = {
+  banner: { label: "Banner", icon: "image-filter-frames" as const, color: "#10b981" },
+  poster: { label: "Poster", icon: "picture-in-picture-bottom-right" as const, color: "#3b82f6" },
+  proximamente: { label: "Proximamente", icon: "clock-outline" as const, color: "#ec4899" },
+  standee: { label: "Standee", icon: "human-male-board" as const, color: "#8b5cf6" },
+  estructura: { label: "Estructura", icon: "pillar" as const, color: "#f59e0b" },
+  otro: { label: "Otro", icon: "help-box" as const, color: "#6b7280" },
+};
+
+// TMDB API Search Helper
+interface TmdbResult {
+  id: number | string;
+  title: string;
+  release_date?: string;
+  poster_path?: string | null;
+  isCustom?: boolean;
+}
+
+export default function MapaBannersScreen() {
+  const { width: windowWidth } = useWindowDimensions();
+  const isMobile = windowWidth < 800;
+  const WorkspaceContainer = isMobile ? ScrollView : View;
+
+  const { cineId, user } = useAuthUser();
+  const userEmail = user?.email || "";
+
+  const [floors, setFloors] = useState<FloorPlan[]>([
+    { id: "floor-pb", name: "Planta Baja", elements: [] },
+  ]);
+  const [selectedFloorId, setSelectedFloorId] = useState<string>("floor-pb");
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
+  const [distributeGap, setDistributeGap] = useState<number>(1);
+
+  // Dragging states
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [canvasLayout, setCanvasLayout] = useState<{ width: number; height: number } | null>(null);
+
+  // Firestore & loading states
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const isMovingWithKeysRef = useRef(false);
+  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [canvasWidthScale, setCanvasWidthScale] = useState(100);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const panOffsetRef = useRef({ x: 0, y: 0 });
+
+  const activeDragIdRef = useRef<string | null>(null);
+  const elementStartPosRef = useRef({ x: 0, y: 0 });
+  const touchStartRef = useRef({ x: 0, y: 0 });
+  const panStartOffsetRef = useRef({ x: 0, y: 0 });
+
+  const pinchStartDistanceRef = useRef<number | null>(null);
+  const pinchStartScaleRef = useRef<number>(100);
+
+  // TMDB Poster Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [directPosterUrl, setDirectPosterUrl] = useState("");
+  const [searchResults, setSearchResults] = useState<TmdbResult[]>([]);
+  const [searchingPoster, setSearchingPoster] = useState(false);
+
+  // Load configuration from Firestore
+  useEffect(() => {
+    if (!cineId) return;
+
+    const docRef = doc(db, CINES_COLLECTION, cineId, "marketing_maps", "config");
+
+    // Use onSnapshot for real-time sync
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot: any) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data() as MarketingMapsConfig;
+            if (data.floors && data.floors.length > 0) {
+              const sanitizedFloors = data.floors.map(floor => ({
+                ...floor,
+                width: floor.width || 1000,
+                height: floor.height || 562,
+                elements: (floor.elements || []).map(el => {
+                  let type: any = el.type;
+                  if (type === "marquesina") type = "poster";
+                  if (type === "columna") type = "estructura";
+                  return { ...el, type };
+                })
+              }));
+              setFloors(sanitizedFloors);
+            // Verify if selected floor still exists
+            const exists = data.floors.some((f) => f.id === selectedFloorId);
+            if (!exists) {
+              setSelectedFloorId(data.floors[0].id);
+              setSelectedElementIds([]);
+            }
+          }
+        }
+        setLoading(false);
+      },
+      (error: any) => {
+        console.error("Error loading marketing maps:", error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [cineId]);
+
+  const activeFloor = useMemo(() => {
+    return floors.find((f) => f.id === selectedFloorId) || floors[0];
+  }, [floors, selectedFloorId]);
+
+  const selectedElement = useMemo(() => {
+    if (!selectedElementId || !activeFloor) return null;
+    return activeFloor.elements.find((el) => el.id === selectedElementId) || null;
+  }, [activeFloor, selectedElementId]);
+
+  // Save changes manually to Firestore
+  const handleSaveChanges = async (customFloors = floors) => {
+    if (!cineId) return;
+
+    try {
+      setSaving(true);
+      const docRef = doc(db, CINES_COLLECTION, cineId, "marketing_maps", "config");
+      await setDoc(docRef, {
+        floors: customFloors,
+        updatedAt: new Date().toISOString(),
+        updatedBy: userEmail || "sistema",
+      });
+    } catch (e: any) {
+      console.error("Error saving marketing maps:", e);
+      Alert.alert("Error", e.message || "No se pudo guardar el mapa.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Listen to arrow keys to move selected elements on Web
+  useEffect(() => {
+    if (Platform.OS !== "web" || isMobile || !activeFloor || (!selectedElementId && selectedElementIds.length === 0)) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Avoid moving if typing inside input fields
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+
+      let dx = 0;
+      let dy = 0;
+      const step = 0.5; // step size in percentage
+
+      if (e.key === "ArrowUp") {
+        dy = -step;
+        e.preventDefault();
+      } else if (e.key === "ArrowDown") {
+        dy = step;
+        e.preventDefault();
+      } else if (e.key === "ArrowLeft") {
+        dx = -step;
+        e.preventDefault();
+      } else if (e.key === "ArrowRight") {
+        dx = step;
+        e.preventDefault();
+      }
+
+      if (dx !== 0 || dy !== 0) {
+        const targets = multiSelectMode ? selectedElementIds : [selectedElementId].filter(Boolean) as string[];
+        if (targets.length > 0) {
+          isMovingWithKeysRef.current = true;
+
+          setFloors((prevFloors) =>
+            prevFloors.map((f) => {
+              if (f.id === selectedFloorId) {
+                return {
+                  ...f,
+                  elements: f.elements.map((item) => {
+                    if (targets.includes(item.id) && !item.locked) {
+                      const newX = Math.max(0, Math.min(100, item.x + dx));
+                      const newY = Math.max(0, Math.min(100, item.y + dy));
+                      return { ...item, x: newX, y: newY };
+                    }
+                    return item;
+                  }),
+                };
+              }
+              return f;
+            })
+          );
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (isMovingWithKeysRef.current && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        isMovingWithKeysRef.current = false;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [selectedElementId, activeFloor, selectedFloorId, floors, handleSaveChanges, multiSelectMode, selectedElementIds]);
+
+  // Add Floor
+  const handleAddFloor = () => {
+    const id = `floor-${Date.now()}`;
+    const newFloor: FloorPlan = {
+      id,
+      name: `Nuevo Piso (${floors.length + 1})`,
+      elements: [],
+      width: 1000,
+      height: 562,
+    };
+    const updated = [...floors, newFloor];
+    setFloors(updated);
+    setSelectedFloorId(id);
+    setSelectedElementIds([]);
+    handleSaveChanges(updated);
+  };
+
+  const handleUpdateFloorDimensions = (id: string, width: number, height: number) => {
+    const updated = floors.map((f) => (f.id === id ? { ...f, width, height } : f));
+    setFloors(updated);
+    handleSaveChanges(updated);
+  };
+
+  const handleSelectElement = (id: string) => {
+    if (multiSelectMode) {
+      setSelectedElementIds((prev) => {
+        if (prev.includes(id)) {
+          const updated = prev.filter((item) => item !== id);
+          setSelectedElementId(updated.length > 0 ? updated[updated.length - 1] : null);
+          return updated;
+        } else {
+          const updated = [...prev, id];
+          setSelectedElementId(id);
+          return updated;
+        }
+      });
+    } else {
+      setSelectedElementId(id);
+      setSelectedElementIds([id]);
+    }
+  };
+
+  const handleAlignSelected = (axis: "x" | "y") => {
+    if (selectedElementIds.length <= 1 || !activeFloor) return;
+    const firstId = selectedElementIds[0];
+    const firstEl = activeFloor.elements.find((el) => el.id === firstId);
+    if (!firstEl) return;
+
+    const alignVal = firstEl[axis];
+
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) => {
+            if (selectedElementIds.includes(el.id) && !el.locked) {
+              return { ...el, [axis]: alignVal };
+            }
+            return el;
+          }),
+        };
+      }
+      return f;
+    });
+    setFloors(updatedFloors);
+  };
+
+  const handleDistributeSelected = (axis: "x" | "y", gap: number) => {
+    if (selectedElementIds.length <= 1 || !activeFloor) return;
+
+    // Get the selected elements
+    const selectedElements = activeFloor.elements.filter((el) =>
+      selectedElementIds.includes(el.id)
+    );
+
+    // Sort by coordinate value along the axis
+    const sorted = [...selectedElements].sort((a, b) => a[axis] - b[axis]);
+
+    // Keep track of the new positions
+    const newPositions: Record<string, number> = {};
+    
+    // First element in sorted array stays in its place
+    let prevEl = sorted[0];
+    newPositions[prevEl.id] = prevEl[axis];
+
+    for (let i = 1; i < sorted.length; i++) {
+      const currEl = sorted[i];
+      
+      if (axis === "x") {
+        const prevWidth = prevEl.width ?? 8;
+        const currWidth = currEl.width ?? 8;
+        const prevVal = newPositions[prevEl.id];
+        let newX = prevVal + (prevWidth / 2) + (currWidth / 2) + gap;
+        newX = Math.max(1, Math.min(99, newX));
+        newPositions[currEl.id] = newX;
+      } else {
+        const prevHeight = prevEl.height ?? 12;
+        const currHeight = currEl.height ?? 12;
+        const prevVal = newPositions[prevEl.id];
+        let newY = prevVal + (prevHeight / 2) + (currHeight / 2) + gap;
+        newY = Math.max(1, Math.min(99, newY));
+        newPositions[currEl.id] = newY;
+      }
+      
+      prevEl = currEl;
+    }
+
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) => {
+            if (selectedElementIds.includes(el.id) && !el.locked && el.id in newPositions) {
+              return { ...el, [axis]: newPositions[el.id] };
+            }
+            return el;
+          }),
+        };
+      }
+      return f;
+    });
+
+    setFloors(updatedFloors);
+    handleSaveChanges(updatedFloors);
+  };
+
+  const commonWidth = useMemo(() => {
+    if (selectedElementIds.length === 0 || !activeFloor) return 8;
+    const firstEl = activeFloor.elements.find((el) => el.id === selectedElementIds[0]);
+    return firstEl?.width ?? 8;
+  }, [activeFloor, selectedElementIds]);
+
+  const commonHeight = useMemo(() => {
+    if (selectedElementIds.length === 0 || !activeFloor) return 12;
+    const firstEl = activeFloor.elements.find((el) => el.id === selectedElementIds[0]);
+    return firstEl?.height ?? 12;
+  }, [activeFloor, selectedElementIds]);
+
+  const handleUpdateSelectedSize = (width: number, height: number) => {
+    if (selectedElementIds.length === 0 || !activeFloor) return;
+
+    const updated = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) => {
+            if (selectedElementIds.includes(el.id) && !el.locked) {
+              return { ...el, width, height };
+            }
+            return el;
+          }),
+        };
+      }
+      return f;
+    });
+    setFloors(updated);
+    handleSaveChanges(updated);
+  };
+
+  const handleSetCommonPosition = (axis: "x" | "y", value: number) => {
+    if (selectedElementIds.length === 0 || !activeFloor) return;
+
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) => {
+            if (selectedElementIds.includes(el.id) && !el.locked) {
+              return { ...el, [axis]: value };
+            }
+            return el;
+          }),
+        };
+      }
+      return f;
+    });
+    setFloors(updatedFloors);
+    handleSaveChanges(updatedFloors);
+  };
+
+  const handleLockAllElements = (lock: boolean) => {
+    if (!activeFloor) return;
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) => ({ ...el, locked: lock })),
+        };
+      }
+      return f;
+    });
+    setFloors(updatedFloors);
+    handleSaveChanges(updatedFloors);
+  };
+
+  const handleLockSelectedElements = (lock: boolean) => {
+    if (!activeFloor) return;
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) =>
+            selectedElementIds.includes(el.id) ? { ...el, locked: lock } : el
+          ),
+        };
+      }
+      return f;
+    });
+    setFloors(updatedFloors);
+    handleSaveChanges(updatedFloors);
+  };
+
+  const handleSetSelectedElementsShape = (makeCircle: boolean) => {
+    if (!activeFloor) return;
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) =>
+            selectedElementIds.includes(el.id) ? { ...el, isCircle: makeCircle } : el
+          ),
+        };
+      }
+      return f;
+    });
+    setFloors(updatedFloors);
+    handleSaveChanges(updatedFloors);
+  };
+
+  const handleExportPNG = async () => {
+    if (!activeFloor) return;
+
+    const exportScale = 6.0; // 6x upscale for ultra-high-resolution crisp image export
+    const floorWidth = activeFloor.width || 1000;
+    const floorHeight = activeFloor.height || 562;
+
+    const esc = (val: string) =>
+      String(val ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+
+    const getBase64FromUrl = async (url: string): Promise<string> => {
+      if (url.startsWith("data:")) return url;
+      try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = () => resolve("");
+          reader.readAsDataURL(blob);
+        });
+      } catch (err) {
+        console.error("Error converting image to Base64:", err);
+        return "";
+      }
+    };
+
+    const wrapTextIntoLines = (text: string, maxCharsPerLine: number): string[] => {
+      const words = text.split(" ");
+      const lines: string[] = [];
+      let currentLine = "";
+
+      words.forEach((word) => {
+        if (word.length > maxCharsPerLine && !currentLine) {
+          lines.push(word);
+          return;
+        }
+        if ((currentLine + " " + word).trim().length <= maxCharsPerLine) {
+          currentLine = (currentLine + " " + word).trim();
+        } else {
+          if (currentLine) lines.push(currentLine);
+          currentLine = word;
+        }
+      });
+      if (currentLine) lines.push(currentLine);
+      return lines;
+    };
+
+    // Pre-fetch all images concurrently and convert to Base64 to bypass browser security sandbox inside SVGs
+    const base64Posters: Record<string, string> = {};
+    await Promise.all(
+      activeFloor.elements.map(async (el) => {
+        if (el.posterUrl) {
+          const b64 = await getBase64FromUrl(el.posterUrl);
+          if (b64) {
+            base64Posters[el.id] = b64;
+          }
+        }
+      })
+    );
+
+    // Construct SVG representation
+    let svgElements = "";
+
+    // Center guides omitted to show only elements on a solid white background
+
+    // Markers
+    activeFloor.elements.forEach((el, index) => {
+      const meta = ELEMENT_TYPE_META[el.type] || ELEMENT_TYPE_META.otro;
+      const width = ((el.width || 8) / 100) * floorWidth;
+      const height = ((el.height || 12) / 100) * floorHeight;
+      const x = (el.x / 100) * floorWidth - width / 2;
+      const y = (el.y / 100) * floorHeight - height / 2;
+
+      const color = meta.color || "#6b7280";
+      const showZocalo = ["banner", "poster", "standee", "proximamente"].includes(el.type);
+
+      if (el.isCircle) {
+        // Define clip path for circular clipping
+        svgElements += `
+          <clipPath id="clip-${el.id}">
+            <ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2 - 1.25}" ry="${height / 2 - 1.25}" />
+          </clipPath>
+        `;
+
+        // Background shape (ellipse/circle)
+        svgElements += `
+          <ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="#ffffff" stroke="${color}" stroke-width="2.5" />
+        `;
+
+        const posterUrl = base64Posters[el.id] || el.posterUrl;
+        if (posterUrl) {
+          svgElements += `
+            <image href="${esc(posterUrl)}" x="${x + 2}" y="${y + 2}" width="${width - 4}" height="${height - 4}" preserveAspectRatio="xMidYMid slice" clip-path="url(#clip-${el.id})" crossorigin="anonymous" />
+          `;
+        } else {
+          const nameText = el.movieName || el.name || "";
+          const maxChars = Math.max(8, Math.floor((width - 12) / 6));
+          const lines = wrapTextIntoLines(nameText, maxChars);
+          const fontSize = Math.min(10, Math.max(7, Math.floor(width / 8)));
+          const lineHeight = fontSize + 2;
+          const totalHeight = lines.length * lineHeight;
+          const startY = y + height / 2 + 3 - (totalHeight / 2) + (fontSize / 2);
+
+          let tspanElements = "";
+          lines.forEach((line, idx) => {
+            tspanElements += `
+              <tspan x="${x + width / 2}" dy="${idx === 0 ? 0 : lineHeight}">${esc(line)}</tspan>
+            `;
+          });
+
+          svgElements += `
+            <ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2 - 3}" ry="${height / 2 - 3}" fill="${color}" opacity="0.15" />
+            <text x="${x + width / 2}" y="${startY}" font-family="Helvetica, Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#1e293b" text-anchor="middle" dominant-baseline="central" clip-path="url(#clip-${el.id})">${tspanElements}</text>
+          `;
+        }
+
+        if (showZocalo) {
+          svgElements += `
+            <path d="M ${x} ${y + height - 14} L ${x + width} ${y + height - 14} L ${x + width} ${y + height} L ${x} ${y + height} Z" fill="${color}" clip-path="url(#clip-${el.id})" />
+            <text x="${x + width / 2}" y="${y + height - 7}" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="middle" clip-path="url(#clip-${el.id})">${esc(meta.label.toUpperCase())}</text>
+          `;
+        }
+      } else {
+        // Background rect
+        svgElements += `
+          <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" ry="8" fill="#ffffff" stroke="${color}" stroke-width="2.5" />
+        `;
+
+        const posterUrl = base64Posters[el.id] || el.posterUrl;
+        if (posterUrl) {
+          svgElements += `
+            <image href="${esc(posterUrl)}" x="${x + 2}" y="${y + 2}" width="${width - 4}" height="${height - (showZocalo ? 18 : 4)}" preserveAspectRatio="xMidYMid meet" crossorigin="anonymous" />
+          `;
+        } else {
+          const nameText = el.movieName || el.name || "";
+          const maxChars = Math.max(8, Math.floor((width - 12) / 6));
+          const lines = wrapTextIntoLines(nameText, maxChars);
+          const fontSize = Math.min(10, Math.max(7, Math.floor(width / 8)));
+          const lineHeight = fontSize + 2;
+          const totalHeight = lines.length * lineHeight;
+          const startY = y + (height - (showZocalo ? 17 : 6)) / 2 + 3 - (totalHeight / 2) + (fontSize / 2);
+
+          let tspanElements = "";
+          lines.forEach((line, idx) => {
+            tspanElements += `
+              <tspan x="${x + width / 2}" dy="${idx === 0 ? 0 : lineHeight}">${esc(line)}</tspan>
+            `;
+          });
+
+          svgElements += `
+            <rect x="${x + 3}" y="${y + 3}" width="${width - 6}" height="${height - (showZocalo ? 17 : 6)}" rx="5" ry="5" fill="${color}" opacity="0.15" />
+            <text x="${x + width / 2}" y="${startY}" font-family="Helvetica, Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#1e293b" text-anchor="middle" dominant-baseline="central">${tspanElements}</text>
+          `;
+        }
+
+        if (showZocalo) {
+          svgElements += `
+            <path d="M ${x + 1.25} ${y + height - 16} L ${x + width - 1.25} ${y + height - 16} L ${x + width - 1.25} ${y + height - 6} A 6 6 0 0 1 ${x + width - 7.25} ${y + height - 1.25} L ${x + 7.25} ${y + height - 1.25} A 6 6 0 0 1 ${x + 1.25} ${y + height - 7.25} Z" fill="${color}" />
+            <text x="${x + width / 2}" y="${y + height - 8}" font-family="Helvetica, Arial, sans-serif" font-size="8" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="middle">${esc(meta.label.toUpperCase())}</text>
+          `;
+        }
+      }
+    });
+
+    const svgXml = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${floorWidth * exportScale}" height="${floorHeight * exportScale}" viewBox="0 0 ${floorWidth} ${floorHeight}">
+        <style>
+          text { user-select: none; }
+        </style>
+        <rect width="${floorWidth}" height="${floorHeight}" fill="#ffffff" />
+        ${svgElements}
+      </svg>
+    `;
+
+    const svgBlob = new Blob([svgXml], { type: "image/svg+xml;charset=utf-8" });
+    const URL = window.URL || window.webkitURL || window;
+    const blobUrl = URL.createObjectURL(svgBlob);
+
+    if (Platform.OS !== "web" || typeof window === "undefined") {
+      const downloadLink = document.createElement("a");
+      downloadLink.download = `${activeFloor.name}.svg`;
+      downloadLink.href = blobUrl;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      return;
+    }
+
+    const image = new window.Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = floorWidth * exportScale;
+      canvas.height = floorHeight * exportScale;
+      const context = canvas.getContext("2d");
+      if (context) {
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, floorWidth * exportScale, floorHeight * exportScale);
+        context.drawImage(image, 0, 0, floorWidth * exportScale, floorHeight * exportScale);
+
+        try {
+          const pngUrl = canvas.toDataURL("image/png");
+          const downloadLink = document.createElement("a");
+          downloadLink.download = `${activeFloor.name}.png`;
+          downloadLink.href = pngUrl;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+        } catch (err) {
+          console.error("Canvas export failed, falling back to SVG download:", err);
+          const downloadLink = document.createElement("a");
+          downloadLink.download = `${activeFloor.name}.svg`;
+          downloadLink.href = blobUrl;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+        }
+      }
+      URL.revokeObjectURL(blobUrl);
+    };
+    image.onerror = () => {
+      console.error("Image loading failed");
+      const downloadLink = document.createElement("a");
+      downloadLink.download = `${activeFloor.name}.svg`;
+      downloadLink.href = blobUrl;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+    };
+    image.src = blobUrl;
+  };
+
+  // Delete Floor
+  const handleDeleteFloor = (id: string) => {
+    if (floors.length <= 1) {
+      Alert.alert("Acción no permitida", "Debe haber al menos un piso en el mapa.");
+      return;
+    }
+
+    const askDelete = () => {
+      const updated = floors.filter((f) => f.id !== id);
+      setFloors(updated);
+      setSelectedFloorId(updated[0].id);
+      setSelectedElementId(null);
+      setSelectedElementIds([]);
+      handleSaveChanges(updated);
+    };
+
+    if (Platform.OS === "web") {
+      if (confirm("¿Estás seguro de que querés eliminar este piso y todos sus elementos?")) {
+        askDelete();
+      }
+    } else {
+      Alert.alert(
+        "Eliminar Piso",
+        "¿Estás seguro de que querés eliminar este piso y todos sus elementos?",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Eliminar", style: "destructive", onPress: askDelete },
+        ]
+      );
+    }
+  };
+
+  // Rename Floor
+  const handleRenameFloor = (id: string, newName: string) => {
+    const updated = floors.map((f) => (f.id === id ? { ...f, name: newName } : f));
+    setFloors(updated);
+    handleSaveChanges(updated);
+  };
+
+  // Add Element to current Floor
+  const handleAddElement = (type: keyof typeof ELEMENT_TYPE_META) => {
+    if (isMobile) return;
+    if (!activeFloor) return;
+
+    const newElement: BannerElement = {
+      id: `el-${Date.now()}`,
+      name: `${ELEMENT_TYPE_META[type].label} #${activeFloor.elements.length + 1}`,
+      type,
+      movieName: "",
+      posterUrl: "",
+      x: 45, // center x
+      y: 45, // center y
+      width: 8, // default width
+      height: 12, // default height
+      locked: false, // default unlocked
+    };
+
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: [...f.elements, newElement],
+        };
+      }
+      return f;
+    });
+
+    setFloors(updatedFloors);
+    setSelectedElementId(newElement.id);
+    handleSaveChanges(updatedFloors);
+  };
+
+  // Delete Selected Element
+  const handleDeleteElement = (id: string) => {
+    if (!activeFloor) return;
+
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.filter((el) => el.id !== id),
+        };
+      }
+      return f;
+    });
+
+    setFloors(updatedFloors);
+    setSelectedElementId(null);
+    handleSaveChanges(updatedFloors);
+  };
+
+  // Duplicate Element
+  const handleDuplicateElement = (element: BannerElement) => {
+    if (!activeFloor) return;
+
+    const newElement: BannerElement = {
+      ...element,
+      id: `el-${Date.now()}`,
+      name: `${element.name} (Copia)`,
+      x: Math.max(1, Math.min(99, element.x + 2)),
+      locked: false,
+    };
+
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: [...f.elements, newElement],
+        };
+      }
+      return f;
+    });
+
+    setFloors(updatedFloors);
+    setSelectedElementId(newElement.id);
+    setSelectedElementIds([newElement.id]);
+    handleSaveChanges(updatedFloors);
+  };
+
+  // Update Element Position
+  const updateElementPosition = (id: string, x: number, y: number) => {
+    setFloors((prevFloors) =>
+      prevFloors.map((f) => {
+        if (f.id === selectedFloorId) {
+          return {
+            ...f,
+            elements: f.elements.map((el) => (el.id === id ? { ...el, x, y } : el)),
+          };
+        }
+        return f;
+      })
+    );
+  };
+
+  // Drag handlers for Web (using direct mouse events for absolute smoothness)
+  const handleCanvasMouseDown = (e: any) => {
+    if (Platform.OS !== "web") return;
+
+    // Travese DOM to see if clicked target is a marker element to avoid starting panning before React Native responder triggers onPressIn
+    let isMarker = false;
+    let target = e.target;
+    while (target && target !== e.currentTarget) {
+      if (
+        target.getAttribute?.("data-marker") === "true" ||
+        target.getAttribute?.("data-focusable") === "true" ||
+        target.style?.cursor === "pointer" ||
+        target.style?.cursor === "move" ||
+        target.tagName === "BUTTON"
+      ) {
+        isMarker = true;
+        break;
+      }
+      target = target.parentNode;
+    }
+
+    if (!isMarker) {
+      setIsPanning(true);
+      panStartRef.current = { x: e.clientX, y: e.clientY };
+      panOffsetRef.current = { ...panOffset };
+      if (e.preventDefault) e.preventDefault();
+    }
+  };
+
+  const handleMouseMove = (e: any) => {
+    if (Platform.OS !== "web" || !canvasLayout) return;
+
+    if (isPanning) {
+      const dx = e.clientX - panStartRef.current.x;
+      const dy = e.clientY - panStartRef.current.y;
+      setPanOffset({
+        x: panOffsetRef.current.x + dx,
+        y: panOffsetRef.current.y + dy,
+      });
+      return;
+    }
+
+    if (!activeDragId) return;
+
+    // Safety check to ensure we do not drag a locked element
+    const element = activeFloor?.elements.find((el) => el.id === activeDragId);
+    if (element?.locked) {
+      setActiveDragId(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clientX = e.clientX - rect.left;
+    const clientY = e.clientY - rect.top;
+
+    let x = (clientX / canvasLayout.width) * 100;
+    let y = (clientY / canvasLayout.height) * 100;
+
+    if (snapToGrid) {
+      const snapStep = 2.5;
+      x = Math.round(x / snapStep) * snapStep;
+      y = Math.round(y / snapStep) * snapStep;
+    }
+
+    x = Math.max(1, Math.min(99, x));
+    y = Math.max(1, Math.min(99, y));
+
+    updateElementPosition(activeDragId, x, y);
+  };
+
+  const handleMouseUp = () => {
+    if (isPanning) {
+      setIsPanning(false);
+    }
+    if (activeDragId) {
+      setActiveDragId(null);
+      activeDragIdRef.current = null;
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (isPanning) {
+      setIsPanning(false);
+    }
+    if (activeDragId) {
+      setActiveDragId(null);
+      activeDragIdRef.current = null;
+    }
+  };
+
+  // Touch handlers for mobile devices (works on both Web and Native)
+  const handleTouchStart = (e: any) => {
+    if (e.nativeEvent.touches && e.nativeEvent.touches.length === 2) {
+      const t1 = e.nativeEvent.touches[0];
+      const t2 = e.nativeEvent.touches[1];
+      const dx = t2.pageX - t1.pageX;
+      const dy = t2.pageY - t1.pageY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      pinchStartDistanceRef.current = dist;
+      pinchStartScaleRef.current = canvasWidthScale;
+
+      setIsPanning(false);
+      activeDragIdRef.current = null;
+      setActiveDragId(null);
+      return;
+    }
+
+    const touch = e.nativeEvent.touches?.[0];
+    if (!touch) return;
+
+    touchStartRef.current = { x: touch.pageX, y: touch.pageY };
+
+    if (!activeDragIdRef.current) {
+      setIsPanning(true);
+      panStartOffsetRef.current = { ...panOffset };
+    } else {
+      const el = activeFloor?.elements.find((item) => item.id === activeDragIdRef.current);
+      if (el) {
+        elementStartPosRef.current = { x: el.x, y: el.y };
+      }
+    }
+  };
+
+  const handleTouchMove = (e: any) => {
+    if (e.nativeEvent.touches && e.nativeEvent.touches.length === 2) {
+      if (pinchStartDistanceRef.current !== null && pinchStartDistanceRef.current > 0) {
+        const t1 = e.nativeEvent.touches[0];
+        const t2 = e.nativeEvent.touches[1];
+        const dx = t2.pageX - t1.pageX;
+        const dy = t2.pageY - t1.pageY;
+        const currentDist = Math.sqrt(dx * dx + dy * dy);
+
+        const ratio = currentDist / pinchStartDistanceRef.current;
+        let newScale = Math.round(pinchStartScaleRef.current * ratio);
+
+        newScale = Math.max(100, Math.min(300, newScale));
+        setCanvasWidthScale(newScale);
+      }
+      return;
+    }
+
+    const touch = e.nativeEvent.touches?.[0];
+    if (!touch || !canvasLayout) return;
+
+    const dx = touch.pageX - touchStartRef.current.x;
+    const dy = touch.pageY - touchStartRef.current.y;
+
+    if (activeDragIdRef.current) {
+      const el = activeFloor?.elements.find((item) => item.id === activeDragIdRef.current);
+      if (el && !el.locked) {
+        let deltaXPercent = (dx / canvasLayout.width) * 100;
+        let deltaYPercent = (dy / canvasLayout.height) * 100;
+
+        let newX = elementStartPosRef.current.x + deltaXPercent;
+        let newY = elementStartPosRef.current.y + deltaYPercent;
+
+        if (snapToGrid) {
+          const snapStep = 2.5;
+          newX = Math.round(newX / snapStep) * snapStep;
+          newY = Math.round(newY / snapStep) * snapStep;
+        }
+
+        newX = Math.max(1, Math.min(99, newX));
+        newY = Math.max(1, Math.min(99, newY));
+
+        updateElementPosition(activeDragIdRef.current, newX, newY);
+      }
+    } else if (isPanning) {
+      setPanOffset({
+        x: panStartOffsetRef.current.x + dx,
+        y: panStartOffsetRef.current.y + dy,
+      });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    pinchStartDistanceRef.current = null;
+    if (isPanning) {
+      setIsPanning(false);
+    }
+    if (activeDragIdRef.current) {
+      activeDragIdRef.current = null;
+      setActiveDragId(null);
+    }
+  };
+
+  // Search TMDB helper
+  const handleSearchPoster = async () => {
+    if (!searchQuery.trim()) return;
+
+    try {
+      setSearchingPoster(true);
+      setSearchResults([]);
+
+      // 1. Consultar pósters personalizados de MongoDB local
+      let localResults: TmdbResult[] = [];
+      try {
+        const colRef = collection(db, "cines", "global", "custom_posters");
+        const snap = await getDocs(colRef);
+        const term = searchQuery.toLowerCase().trim();
+        localResults = snap.docs
+          .map((d: any) => {
+            const data = d.data();
+            const rawUrl = data.imageUrl || "";
+            const apiBase = process.env.EXPO_PUBLIC_API_URL || "/api";
+            // Si es base64, apuntar a la URL del servidor Docker para nunca inflar el documento del mapa
+            const posterPath = rawUrl.startsWith("http")
+              ? rawUrl
+              : `${apiBase}/custom_posters/${d.id}/image`;
+
+            return {
+              id: d.id,
+              title: data.title,
+              poster_path: posterPath,
+              isCustom: true,
+            } as any;
+          })
+          .filter((p: any) => p.title.toLowerCase().includes(term));
+      } catch (err) {
+        console.error("Error querying local custom posters:", err);
+      }
+
+      // 2. Consultar películas de TMDB externa
+      let tmdbResults: TmdbResult[] = [];
+      try {
+        const searchPosterFunc = httpsCallable<{ query: string }, { results: TmdbResult[] }>(
+          functions,
+          "searchMoviePoster"
+        );
+        const response = await searchPosterFunc({ query: searchQuery });
+        tmdbResults = response.data.results || [];
+      } catch (err) {
+        console.error("Error searching TMDB posters:", err);
+      }
+
+      // 3. Combinar resultados locales y remotos
+      const combined = [...localResults, ...tmdbResults];
+      setSearchResults(combined);
+
+      if (combined.length === 0) {
+        Alert.alert("Sin resultados", "No encontramos películas o pósters custom que coincidan.");
+      }
+    } catch (e) {
+      console.error("Error searching poster:", e);
+      Alert.alert("Error", "Ocurrió un error buscando el póster de la película.");
+    } finally {
+      setSearchingPoster(false);
+    }
+  };
+
+  // Select Search result and assign to element
+  const assignPoster = (movieTitle: string, posterPath: string | null | undefined) => {
+    if (!selectedElementId || !activeFloor) return;
+
+    let posterUrl = "";
+    const apiBase = process.env.EXPO_PUBLIC_API_URL || "/api";
+    const backendBase = process.env.EXPO_PUBLIC_BACKEND_URL || "";
+    if (posterPath) {
+      const cleanPath = posterPath.trim();
+      if (cleanPath.startsWith("data:")) {
+        // En caso de que se pase data URI por error, evitar inflar el mapa
+        posterUrl = cleanPath;
+      } else if (apiBase && cleanPath.includes(apiBase)) {
+        // URL de nuestro servidor Docker
+        posterUrl = cleanPath;
+      } else if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
+        // URL externa o TMDB: envolver con proxy para asegurar compatibilidad CORS y descarga SVG/PNG
+        posterUrl = `${backendBase}/api/cinemark/poster?url=${encodeURIComponent(cleanPath)}`;
+      } else {
+        // Path relativo de TMDB
+        const fullTmdb = `https://image.tmdb.org/t/p/w500${cleanPath}`;
+        posterUrl = `${backendBase}/api/cinemark/poster?url=${encodeURIComponent(fullTmdb)}`;
+      }
+    }
+
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) =>
+            el.id === selectedElementId
+              ? { ...el, movieName: movieTitle || el.movieName, posterUrl }
+              : el
+          ),
+        };
+      }
+      return f;
+    });
+
+    setFloors(updatedFloors);
+    setSearchResults([]);
+    setSearchQuery("");
+    setDirectPosterUrl("");
+    handleSaveChanges(updatedFloors);
+  };
+
+  // Custom modification input handles
+  const updateElementDetail = (id: string, field: "name" | "movieName", value: string) => {
+    setFloors((prevFloors) =>
+      prevFloors.map((f) => {
+        if (f.id === selectedFloorId) {
+          return {
+            ...f,
+            elements: f.elements.map((el) => (el.id === id ? { ...el, [field]: value } : el)),
+          };
+        }
+        return f;
+      })
+    );
+  };
+
+  const updateElementSize = (id: string, width: number, height: number) => {
+    const updated = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) => (el.id === id ? { ...el, width, height } : el)),
+        };
+      }
+      return f;
+    });
+    setFloors(updated);
+  };
+
+  const handleToggleElementShape = (id: string, makeCircle: boolean) => {
+    const updated = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) =>
+            el.id === id ? { ...el, isCircle: makeCircle } : el
+          ),
+        };
+      }
+      return f;
+    });
+    setFloors(updated);
+    handleSaveChanges(updated);
+  };
+
+  // Print PDF Layout Generator
+  const handlePrint = async () => {
+    try {
+      setPrinting(true);
+
+      const esc = (val: string) =>
+        String(val ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;");
+
+      let totalSections = 0;
+      floors.forEach((floor) => {
+        const fWidth = floor.width || 1000;
+        const fHeight = floor.height || 562;
+        const fAspectRatio = fWidth / fHeight;
+        const needsSplit = fAspectRatio > 2.2;
+        if (needsSplit) {
+          totalSections += 2;
+        } else {
+          totalSections += 1;
+        }
+      });
+      const bodyClass = totalSections > 1 ? "multi-map" : "single-map";
+
+      const floorsHtml = floors
+        .map((floor) => {
+          // Generate marker badges on canvas representation
+          const canvasRepresentation = floor.elements
+            .map((el, index) => {
+              const color = ELEMENT_TYPE_META[el.type]?.color || "#6b7280";
+              const showZocalo = ["banner", "poster", "standee", "proximamente"].includes(el.type);
+              const posterContent = el.posterUrl
+                ? `<img class="print-poster-img" src="${el.posterUrl}" alt="Poster" />`
+                : `<div class="print-marker-fallback" style="background-color: ${color}; ${showZocalo ? 'padding-bottom: 12px;' : ''}">
+                     <span class="fallback-text">${esc(el.movieName || el.name)}</span>
+                   </div>`;
+              const width = el.width || 8;
+              const height = el.height || 12;
+              const left = el.x - width / 2;
+              const top = el.y - height / 2;
+              const zocaloHtml = showZocalo
+                ? `<div class="print-marker-zocalo" style="background-color: ${color};">${esc(ELEMENT_TYPE_META[el.type]?.label || el.type)}</div>`
+                : "";
+              return `
+              <div class="print-marker" style="left: ${left}%; top: ${top}%; width: ${width}%; height: ${height}%; border-color: ${color}; ${el.isCircle ? 'border-radius: 50%; overflow: hidden;' : ''}">
+                ${posterContent}
+                ${zocaloHtml}
+              </div>
+            `;
+            })
+            .join("");
+
+          const fWidth = floor.width || 1000;
+          const fHeight = floor.height || 562;
+          const fAspectRatio = fWidth / fHeight;
+          const needsSplit = fAspectRatio > 2.2;
+
+          if (needsSplit) {
+            return `
+              <div class="floor-section split-part">
+                <h2>${esc(floor.name)} - Parte Izquierda</h2>
+                <div class="print-canvas" style="aspect-ratio: ${fAspectRatio / 2};">
+                  <div class="canvas-inner" style="width: 200%; left: 0;">
+                    <div class="canvas-grid-line h"></div>
+                    <div class="canvas-grid-line v"></div>
+                    ${canvasRepresentation}
+                  </div>
+                </div>
+              </div>
+              <div class="floor-section split-part">
+                <h2>${esc(floor.name)} - Parte Derecha</h2>
+                <div class="print-canvas" style="aspect-ratio: ${fAspectRatio / 2};">
+                  <div class="canvas-inner" style="width: 200%; left: -100%;">
+                    <div class="canvas-grid-line h"></div>
+                    <div class="canvas-grid-line v"></div>
+                    ${canvasRepresentation}
+                  </div>
+                </div>
+              </div>
+            `;
+          }
+
+          return `
+            <div class="floor-section">
+              <h2>${esc(floor.name)}</h2>
+              <div class="print-canvas" style="aspect-ratio: ${fAspectRatio};">
+                <div class="canvas-inner" style="width: 100%; left: 0;">
+                  <div class="canvas-grid-line h"></div>
+                  <div class="canvas-grid-line v"></div>
+                  ${canvasRepresentation}
+                </div>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+
+      // Group elements for the summary page requested by Catriel
+      const summaryHtml = `
+        <div class="summary-page" style="page-break-before: always; width: 100%; max-width: 100%; box-sizing: border-box; display: flex; flex-direction: column;">
+          <h1 style="font-size: 24px; color: #0f172a; border-bottom: 2px solid #cbd5e1; padding-bottom: 8px; margin-bottom: 20px; font-weight: bold; text-align: left;">Resumen General de Banners y Marquesinas</h1>
+          ${floors.map(floor => {
+            // Group elements by type
+            const grouped: Record<string, typeof floor.elements> = {};
+            floor.elements.forEach(el => {
+              const label = ELEMENT_TYPE_META[el.type]?.label || "Otro";
+              if (!grouped[label]) grouped[label] = [];
+              grouped[label].push(el);
+            });
+
+            const hasElements = floor.elements.length > 0;
+            if (!hasElements) {
+              return `
+                <div style="margin-bottom: 25px; text-align: left;">
+                  <h2 style="font-size: 18px; color: #334155; margin-bottom: 8px; font-weight: bold;">${esc(floor.name)}</h2>
+                  <p style="font-size: 12px; color: #64748b; font-style: italic;">Sin elementos registrados en este piso.</p>
+                </div>
+              `;
+            }
+
+            const groupsHtml = Object.entries(grouped).map(([typeLabel, items]) => {
+              const itemsList = items.map((item) => {
+                const name = item.movieName || item.name || "Sin nombre";
+                return `<strong>${esc(name)}</strong>`;
+              }).join(", ");
+              return `
+                <p style="font-size: 13px; margin: 6px 0; color: #1e293b; text-align: left;">
+                  <span style="font-weight: bold; color: #475569;">${esc(typeLabel)}s:</span> ${itemsList}
+                </p>
+              `;
+            }).join("");
+
+            return `
+              <div style="margin-bottom: 25px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 15px; text-align: left; break-inside: avoid; page-break-inside: avoid;">
+                <h2 style="font-size: 18px; color: #0f172a; margin-bottom: 10px; font-weight: bold;">${esc(floor.name)}</h2>
+                ${groupsHtml}
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+
+      const html = `
+        <!doctype html>
+        <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Plano de Banners y Marquesinas</title>
+          <style>
+            @page {
+              size: A4 landscape;
+              margin: 0;
+            }
+            html {
+              width: 100%;
+              margin: 0;
+              padding: 0;
+            }
+            body {
+              font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+              color: #1e293b;
+              width: 100%;
+              margin: 0;
+              padding: 15mm 20mm;
+              box-sizing: border-box;
+              background: #fff;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+            }
+            .floor-section {
+              break-inside: avoid;
+              page-break-inside: avoid;
+              width: 100%;
+              max-width: 100%;
+              margin-bottom: 40px;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+            }
+            .floor-section:last-child {
+              margin-bottom: 0;
+            }
+            .floor-section h2 {
+              font-size: 20px;
+              margin-top: 10px;
+              margin-bottom: 15px;
+              color: #0f172a;
+              text-align: center;
+              font-weight: 700;
+            }
+            .print-canvas {
+              width: 100%;
+              background-color: #ffffff;
+              border: 2px solid #94a3b8;
+              border-radius: 8px;
+              position: relative;
+              overflow: hidden;
+              box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            }
+            .canvas-inner {
+              position: absolute;
+              height: 100%;
+              top: 0;
+            }
+            .canvas-grid-line {
+              position: absolute;
+              opacity: 0.15;
+            }
+            .canvas-grid-line.h {
+              width: 100%;
+              height: 0;
+              border-top: 1.5px dashed #64748b;
+              top: 50%;
+            }
+            .canvas-grid-line.v {
+              width: 0;
+              height: 100%;
+              border-left: 1.5px dashed #64748b;
+              left: 50%;
+            }
+            .print-marker {
+              position: absolute;
+              box-sizing: border-box;
+              border-width: 2.5px;
+              border-style: solid;
+              border-radius: 6px;
+              overflow: hidden;
+              background-color: #ffffff;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+            .print-poster-img {
+              width: 100%;
+              height: 100%;
+              object-fit: contain;
+              background-color: #ffffff;
+            }
+            .print-marker-fallback {
+              width: 100%;
+              height: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 4px;
+              box-sizing: border-box;
+            }
+            .fallback-text {
+              color: #ffffff;
+              font-size: 9px;
+              font-weight: bold;
+              text-align: center;
+              line-height: 1.2;
+              word-break: break-word;
+            }
+            .print-marker-zocalo {
+              position: absolute;
+              bottom: 0;
+              left: 0;
+              width: 100%;
+              height: 12px;
+              color: #ffffff;
+              font-size: 7px;
+              font-weight: bold;
+              text-align: center;
+              text-transform: uppercase;
+              line-height: 12px;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              z-index: 5;
+            }
+          </style>
+        </head>
+        <body class="${bodyClass}">
+          ${floorsHtml}
+          ${summaryHtml}
+        </body>
+        </html>
+      `;
+
+      if (Platform.OS === "web") {
+        const printWindow = window.open("", "_blank", "width=1200,height=900");
+        if (!printWindow) {
+          throw new Error("El navegador bloqueó la ventana de impresión.");
+        }
+        printWindow.document.open();
+        printWindow.document.write(html);
+        printWindow.document.close();
+        
+        const doPrint = () => {
+          setTimeout(() => {
+            printWindow.focus();
+            printWindow.print();
+          }, 500);
+        };
+
+        if (printWindow.document.readyState === "complete") {
+          doPrint();
+        } else {
+          printWindow.onload = doPrint;
+        }
+      } else {
+        await Print.printAsync({ html });
+      }
+    } catch (e: any) {
+      console.error("Error generating printout:", e);
+      Alert.alert("Error de Impresión", e.message || "No se pudo generar la impresión.");
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={s.center}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={s.loadingText}>Cargando mapa de banners...</Text>
+      </View>
+    );
+  }
+
+  const isDraggingOrPanning = isPanning || activeDragId !== null;
+
+  const workspaceContent = (
+    <>
+      {/* ELEMENT GENERATOR PALETTE */}
+      {!isMobile && (
+        <View style={s.paletteCard}>
+          <Text style={s.paletteTitle}>Añadir Elemento</Text>
+          <View style={s.paletteButtons}>
+            {Object.entries(ELEMENT_TYPE_META).map(([key, meta]) => (
+              <Pressable
+                key={key}
+                style={[s.paletteBtn, { borderLeftColor: meta.color }]}
+                onPress={() => handleAddElement(key as any)}
+              >
+                <MaterialCommunityIcons name={meta.icon} size={18} color={meta.color} />
+                <Text style={s.paletteBtnText}>{meta.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* DRAG AND DROP CANVAS */}
+      <View style={s.canvasContainer}>
+        <View style={s.canvasHeader}>
+          <Text style={s.canvasHelpText}>
+            {isMobile
+              ? "Tocá los elementos para cambiar su póster. Mové el fondo del plano para desplazarte."
+              : "Arrastrá los elementos para posicionarlos. Mové el fondo del plano para desplazarte."}
+          </Text>
+          
+          <View style={s.canvasControlsRow}>
+            {/* Zoom width controller */}
+            <View style={s.zoomSliderContainer}>
+              <Text style={s.zoomLabel}>Ancho: {canvasWidthScale}%</Text>
+              <Pressable
+                style={s.zoomBtn}
+                onPress={() => {
+                  setCanvasWidthScale(prev => Math.max(100, prev - 25));
+                  if (canvasWidthScale <= 125) {
+                    setPanOffset({ x: 0, y: 0 });
+                  }
+                }}
+              >
+                <Text style={s.zoomBtnText}>-</Text>
+              </Pressable>
+              <Pressable
+                style={s.zoomBtn}
+                onPress={() => setCanvasWidthScale(prev => Math.min(300, prev + 25))}
+              >
+                <Text style={s.zoomBtnText}>+</Text>
+              </Pressable>
+            </View>
+
+            {!isMobile && (
+              <>
+                <Pressable
+                  style={[s.snapToggleBtn, multiSelectMode && s.snapToggleBtnActive]}
+                  onPress={() => {
+                    setMultiSelectMode(!multiSelectMode);
+                    if (multiSelectMode) {
+                      setSelectedElementIds([]);
+                    } else if (selectedElementId) {
+                      setSelectedElementIds([selectedElementId]);
+                    }
+                  }}
+                >
+                  <MaterialCommunityIcons
+                    name={multiSelectMode ? "checkbox-multiple-marked" : "checkbox-multiple-blank-outline"}
+                    size={14}
+                    color={multiSelectMode ? "#fff" : COLORS.muted}
+                  />
+                  <Text style={[s.snapToggleText, multiSelectMode && { color: "#fff" }]}>
+                    Multiselección
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[s.snapToggleBtn, snapToGrid && s.snapToggleBtnActive]}
+                  onPress={() => setSnapToGrid(!snapToGrid)}
+                >
+                  <MaterialCommunityIcons
+                    name={snapToGrid ? "grid" : "grid-off"}
+                    size={14}
+                    color={snapToGrid ? "#fff" : COLORS.muted}
+                  />
+                  <Text style={[s.snapToggleText, snapToGrid && { color: "#fff" }]}>
+                    Cuadrícula
+                  </Text>
+                </Pressable>
+
+                {/* Custom Floor Dimensions inputs */}
+                <View style={s.dimensionsContainer}>
+                  <MaterialCommunityIcons name="resize" size={14} color={COLORS.muted} />
+                  <Text style={s.dimLabel}>Ancho:</Text>
+                  <TextInput
+                    style={s.dimInput}
+                    keyboardType="numeric"
+                    value={String(activeFloor?.width || 1000)}
+                    onChangeText={(val) => {
+                      const parsed = parseInt(val, 10);
+                      if (!isNaN(parsed)) {
+                        handleUpdateFloorDimensions(activeFloor.id, parsed, activeFloor?.height || 562);
+                      }
+                    }}
+                  />
+                  <Text style={s.dimLabel}>Alto:</Text>
+                  <TextInput
+                    style={s.dimInput}
+                    keyboardType="numeric"
+                    value={String(activeFloor?.height || 562)}
+                    onChangeText={(val) => {
+                      const parsed = parseInt(val, 10);
+                      if (!isNaN(parsed)) {
+                        handleUpdateFloorDimensions(activeFloor.id, activeFloor?.width || 1000, parsed);
+                      }
+                    }}
+                  />
+                </View>
+
+                {/* Lock/Unlock All Banners */}
+                <Pressable
+                  style={s.lockAllBtn}
+                  onPress={() => handleLockAllElements(true)}
+                >
+                  <MaterialCommunityIcons name="lock" size={14} color={COLORS.muted} />
+                  <Text style={s.lockAllText}>Fijar Todos</Text>
+                </Pressable>
+                <Pressable
+                  style={s.lockAllBtn}
+                  onPress={() => handleLockAllElements(false)}
+                >
+                  <MaterialCommunityIcons name="lock-open-outline" size={14} color={COLORS.muted} />
+                  <Text style={s.lockAllText}>Soltar Todos</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        </View>
+
+        <View style={s.canvasViewport}>
+          <View
+            style={[
+              s.canvas,
+              {
+                width: (activeFloor?.width || 1000) * (canvasWidthScale / 100),
+                height: (activeFloor?.height || 562) * (canvasWidthScale / 100),
+                left: panOffset.x,
+                top: panOffset.y,
+                position: "absolute",
+                ...(Platform.OS === "web" && {
+                  cursor: isPanning ? "grabbing" : (activeDragId ? "move" : "grab"),
+                }),
+              } as any
+            ]}
+            onLayout={(e) => {
+              const { width, height } = e.nativeEvent.layout;
+              setCanvasLayout({ width, height });
+            }}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onTouchCancel={handleTouchEnd}
+            {...({
+              onMouseDown: handleCanvasMouseDown,
+              onMouseMove: handleMouseMove,
+              onMouseUp: handleMouseUp,
+              onMouseLeave: handleMouseLeave,
+            } as any)}
+          >
+            {/* Center guides */}
+            <View style={s.guideLineH} />
+            <View style={s.guideLineV} />
+
+            {/* Elements markers */}
+            {activeFloor?.elements.map((el, index) => {
+              const meta = ELEMENT_TYPE_META[el.type] || ELEMENT_TYPE_META.otro;
+              const isSelected = multiSelectMode
+                ? selectedElementIds.includes(el.id)
+                : el.id === selectedElementId;
+              const hasPoster = !!el.posterUrl;
+              const showZocalo = ["banner", "poster", "standee", "proximamente"].includes(el.type);
+
+              return (
+                <Pressable
+                  key={el.id}
+                  style={[
+                    s.elementMarker,
+                    {
+                      width: `${el.width || 8}%`,
+                      height: `${el.height || 12}%`,
+                      left: `${el.x - (el.width || 8) / 2}%`,
+                      top: `${el.y - (el.height || 12) / 2}%`,
+                      borderColor: isSelected ? COLORS.primary : meta.color,
+                      backgroundColor: isSelected ? COLORS.primarySoft : COLORS.card,
+                      borderRadius: el.isCircle ? 9999 : 8,
+                      overflow: el.isCircle ? "hidden" : "visible",
+                    },
+                    hasPoster && s.elementMarkerWithPoster,
+                    hasPoster && el.isCircle && { borderRadius: 9999, overflow: "hidden" },
+                  ]}
+                  onPress={() => {
+                    if (isMobile) {
+                      setSelectedElementId(el.id);
+                      setSelectedElementIds([el.id]);
+                    } else if (multiSelectMode) {
+                      handleSelectElement(el.id);
+                    }
+                  }}
+                  onPressIn={() => {
+                    if (isMobile) return;
+                    if (!multiSelectMode) {
+                      setSelectedElementId(el.id);
+                      setSelectedElementIds([el.id]);
+                      if (!el.locked) {
+                        setActiveDragId(el.id);
+                        activeDragIdRef.current = el.id;
+                        const startEl = activeFloor?.elements.find(item => item.id === el.id);
+                        if (startEl) {
+                          elementStartPosRef.current = { x: startEl.x, y: startEl.y };
+                        }
+                      }
+                    }
+                  }}
+                  {...({ "data-marker": "true" } as any)}
+                >
+                  {hasPoster ? (
+                    <Image source={{ uri: el.posterUrl }} style={s.elementPosterBg as any} resizeMode="contain" />
+                  ) : (
+                    <Text style={[s.elementMarkerCenterText, showZocalo && { paddingBottom: 12 }]} numberOfLines={4}>
+                      {el.movieName || el.name}
+                    </Text>
+                  )}
+                  {showZocalo && (
+                    <View style={[s.elementZocalo, { backgroundColor: meta.color }]}>
+                      <Text style={s.elementZocaloText} numberOfLines={1}>
+                        {meta.label}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={[s.elementMarkerNumberBadge, { backgroundColor: meta.color }]}>
+                    <Text style={s.elementMarkerNumberText}>{index + 1}</Text>
+                  </View>
+                  {el.locked && (
+                    <View style={s.lockBadge}>
+                      <MaterialCommunityIcons name="lock" size={10} color="#fff" />
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+
+      {/* SIDEBAR PROPERTIES EDITOR */}
+      <View style={[
+        s.sidebar,
+        isMobile && {
+          width: "100%",
+          borderLeftWidth: 0,
+          borderTopWidth: 1,
+        }
+      ]}>
+        {multiSelectMode && selectedElementIds.length > 1 ? (
+          <ScrollView contentContainerStyle={s.sidebarContent}>
+            <View style={s.sidebarHeader}>
+              <Text style={s.sidebarTitle}>Selección Múltiple</Text>
+              <Text style={{ fontSize: 12, fontWeight: "bold", color: COLORS.primary }}>
+                {selectedElementIds.length} elementos
+              </Text>
+            </View>
+
+            <View style={s.field}>
+              <Text style={s.fieldLabel}>Elementos Seleccionados</Text>
+              <View style={{ gap: 4, backgroundColor: COLORS.bg, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border }}>
+                {selectedElementIds.map((id) => {
+                  const el = activeFloor?.elements.find((item) => item.id === id);
+                  return (
+                    <Text key={id} style={{ fontSize: 12, color: COLORS.text, fontWeight: "600" }}>
+                      • {el?.name || "Elemento"} {el?.movieName ? `(${el.movieName})` : ""}
+                    </Text>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Alineación Rápida</Text>
+              <Text style={{ fontSize: 11, color: COLORS.muted, fontStyle: "italic", marginBottom: 6 }}>
+                Alinea todos los elementos seleccionados al eje del primer elemento seleccionado:
+              </Text>
+              
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                  onPress={() => handleAlignSelected("x")}
+                >
+                  <MaterialCommunityIcons name="align-vertical-center" size={16} color="#fff" />
+                  <Text style={s.btnText}>Alinear en X</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                  onPress={() => handleAlignSelected("y")}
+                >
+                  <MaterialCommunityIcons name="align-horizontal-center" size={16} color="#fff" />
+                  <Text style={s.btnText}>Alinear en Y</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Separar Elementos</Text>
+              <Text style={{ fontSize: 11, color: COLORS.muted, fontStyle: "italic", marginBottom: 6 }}>
+                Separa los elementos seleccionados de forma simétrica a lo largo del eje seleccionado (ordenados de menor a mayor posición):
+              </Text>
+              
+              <View style={{ gap: 8 }}>
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Distancia / Gap (%)</Text>
+                  <View style={s.stepperRow}>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => setDistributeGap(prev => Math.max(0.1, parseFloat((prev - 0.5).toFixed(1))))}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-0.5</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => setDistributeGap(prev => Math.max(0.1, parseFloat((prev - 0.1).toFixed(1))))}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-0.1</Text>
+                    </Pressable>
+                    
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      value={String(distributeGap)}
+                      onChangeText={(val) => {
+                        const parsed = parseFloat(val);
+                        if (!isNaN(parsed)) {
+                          setDistributeGap(Math.max(0, parsed));
+                        }
+                      }}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
+
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => setDistributeGap(prev => parseFloat((prev + 0.1).toFixed(1)))}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+0.1</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => setDistributeGap(prev => parseFloat((prev + 0.5).toFixed(1)))}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+0.5</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+                  <Pressable
+                    style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                    onPress={() => handleDistributeSelected("x", distributeGap)}
+                  >
+                    <MaterialCommunityIcons name="arrow-split-vertical" size={16} color="#fff" />
+                    <Text style={s.btnText}>Separar en X</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                    onPress={() => handleDistributeSelected("y", distributeGap)}
+                  >
+                    <MaterialCommunityIcons name="arrow-split-horizontal" size={16} color="#fff" />
+                    <Text style={s.btnText}>Separar en Y</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Dimensiones de la Selección</Text>
+              
+              <View style={s.sizeControlRow}>
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Ancho Común (%)</Text>
+                  <View style={s.stepperRow}>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newWidth = Math.max(3, commonWidth - 5);
+                        handleUpdateSelectedSize(newWidth, commonHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-5</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newWidth = Math.max(3, commonWidth - 1);
+                        handleUpdateSelectedSize(newWidth, commonHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-1</Text>
+                    </Pressable>
+                    
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      value={String(commonWidth)}
+                      onChangeText={(val) => {
+                        const parsed = parseInt(val, 10);
+                        if (!isNaN(parsed)) {
+                          const constrained = Math.max(1, Math.min(100, parsed));
+                          handleUpdateSelectedSize(constrained, commonHeight);
+                        }
+                      }}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
+
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newWidth = Math.min(100, commonWidth + 1);
+                        handleUpdateSelectedSize(newWidth, commonHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+1</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newWidth = Math.min(100, commonWidth + 5);
+                        handleUpdateSelectedSize(newWidth, commonHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+5</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Alto Común (%)</Text>
+                  <View style={s.stepperRow}>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newHeight = Math.max(3, commonHeight - 5);
+                        handleUpdateSelectedSize(commonWidth, newHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-5</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newHeight = Math.max(3, commonHeight - 1);
+                        handleUpdateSelectedSize(commonWidth, newHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-1</Text>
+                    </Pressable>
+                    
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      value={String(commonHeight)}
+                      onChangeText={(val) => {
+                        const parsed = parseInt(val, 10);
+                        if (!isNaN(parsed)) {
+                          const constrained = Math.max(1, Math.min(100, parsed));
+                          handleUpdateSelectedSize(commonWidth, constrained);
+                        }
+                      }}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
+
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newHeight = Math.min(100, commonHeight + 1);
+                        handleUpdateSelectedSize(commonWidth, newHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+1</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newHeight = Math.min(100, commonHeight + 5);
+                        handleUpdateSelectedSize(commonWidth, newHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+5</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Establecer Posición Común</Text>
+              
+              <View style={s.sizeControlRow}>
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Posición X Común (%)</Text>
+                  <View style={s.stepperRow}>
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      placeholder="Ej: 50"
+                      onChangeText={(val) => {
+                        const parsed = parseFloat(val);
+                        if (!isNaN(parsed)) {
+                          handleSetCommonPosition("x", Math.max(0, Math.min(100, parsed)));
+                        }
+                      }}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
+                  </View>
+                </View>
+
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Posición Y Común (%)</Text>
+                  <View style={s.stepperRow}>
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      placeholder="Ej: 50"
+                      onChangeText={(val) => {
+                        const parsed = parseFloat(val);
+                        if (!isNaN(parsed)) {
+                          handleSetCommonPosition("y", Math.max(0, Math.min(100, parsed)));
+                        }
+                      }}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Fijar / Soltar Selección</Text>
+              <Text style={{ fontSize: 11, color: COLORS.muted, fontStyle: "italic", marginBottom: 6 }}>
+                Fija o desbloquea el movimiento de los elementos seleccionados:
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                  onPress={() => handleLockSelectedElements(true)}
+                >
+                  <MaterialCommunityIcons name="lock" size={16} color="#fff" />
+                  <Text style={s.btnText}>Fijar Seleccionados</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[s.iconBtn, { flex: 1, backgroundColor: "#64748b" }]}
+                  onPress={() => handleLockSelectedElements(false)}
+                >
+                  <MaterialCommunityIcons name="lock-open-outline" size={16} color="#fff" />
+                  <Text style={s.btnText}>Soltar Seleccionados</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Forma de la Selección</Text>
+              <Text style={{ fontSize: 11, color: COLORS.muted, fontStyle: "italic", marginBottom: 6 }}>
+                Cambia la forma de todos los elementos seleccionados:
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                  onPress={() => handleSetSelectedElementsShape(false)}
+                >
+                  <MaterialCommunityIcons name="square-outline" size={16} color="#fff" />
+                  <Text style={s.btnText}>Rectángulo</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                  onPress={() => handleSetSelectedElementsShape(true)}
+                >
+                  <MaterialCommunityIcons name="circle-outline" size={16} color="#fff" />
+                  <Text style={s.btnText}>Círculo</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            <Pressable
+              style={[s.iconBtn, { backgroundColor: "#64748b" }]}
+              onPress={() => {
+                setSelectedElementIds([]);
+                setSelectedElementId(null);
+              }}
+            >
+              <MaterialCommunityIcons name="checkbox-multiple-blank-outline" size={16} color="#fff" />
+              <Text style={s.btnText}>Deseleccionar Todo</Text>
+            </Pressable>
+          </ScrollView>
+        ) : selectedElement ? (
+          <ScrollView contentContainerStyle={s.sidebarContent}>
+            <View style={{ gap: 8, marginBottom: 8 }}>
+              <View style={[s.sidebarHeader, { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }]}>
+                <Text style={s.sidebarTitle}>Editar Elemento</Text>
+                {isMobile && (
+                  <Pressable
+                    style={{ padding: 4 }}
+                    onPress={() => {
+                      setSelectedElementId(null);
+                      setSelectedElementIds([]);
+                    }}
+                  >
+                    <MaterialCommunityIcons name="close" size={20} color={COLORS.muted} />
+                  </Pressable>
+                )}
+              </View>
+              
+              {!isMobile && (
+                <View style={[s.sidebarActionsHeader, { width: "100%", justifyContent: "flex-start" }]}>
+                  <Pressable
+                    style={[s.lockToggleBtn, selectedElement.locked && s.lockToggleBtnActive, { flex: 1, justifyContent: "center" }]}
+                    onPress={() => {
+                      const updated = floors.map((f) => {
+                        if (f.id === selectedFloorId) {
+                          return {
+                            ...f,
+                            elements: f.elements.map((el) =>
+                              el.id === selectedElement.id ? { ...el, locked: !el.locked } : el
+                            ),
+                          };
+                        }
+                        return f;
+                      });
+                      setFloors(updated);
+                      handleSaveChanges(updated);
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name={selectedElement.locked ? "lock" : "lock-open-outline"}
+                      size={14}
+                      color={selectedElement.locked ? "#fff" : COLORS.muted}
+                    />
+                    <Text style={[s.lockToggleBtnText, selectedElement.locked && { color: "#fff" }]}>
+                      {selectedElement.locked ? "Bloqueado" : "Bloquear"}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[s.replicateBtn, { flex: 1, justifyContent: "center" }]}
+                    onPress={() => handleDuplicateElement(selectedElement)}
+                  >
+                    <MaterialCommunityIcons name="content-copy" size={14} color={COLORS.primary} />
+                    <Text style={s.replicateBtnText}>Replicar</Text>
+                  </Pressable>
+
+                  <Pressable 
+                    style={[s.deleteBtn, { width: 36, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 8 }]} 
+                    onPress={() => handleDeleteElement(selectedElement.id)}
+                  >
+                    <MaterialCommunityIcons name="delete-outline" size={20} color={COLORS.danger} />
+                  </Pressable>
+                </View>
+              )}
+            </View>
+
+            {isMobile ? (
+              <View style={[s.field, { marginTop: 8 }]}>
+                <Text style={{ fontSize: 14, color: COLORS.text, fontWeight: "600" }}>
+                  {selectedElement.name}
+                </Text>
+                <Text style={{ fontSize: 12, color: COLORS.muted, marginTop: 2 }}>
+                  Tipo: {ELEMENT_TYPE_META[selectedElement.type]?.label || selectedElement.type}
+                </Text>
+              </View>
+            ) : (
+              <View style={s.field}>
+                <Text style={s.fieldLabel}>Nombre del Elemento</Text>
+                <TextInput
+                  style={s.textInput}
+                  value={selectedElement.name}
+                  onChangeText={(val) => updateElementDetail(selectedElement.id, "name", val)}
+                  onBlur={() => handleSaveChanges()}
+                />
+              </View>
+            )}
+
+            {!isMobile && (
+              <>
+                <View style={s.field}>
+                  <Text style={s.fieldLabel}>Tipo de Banner</Text>
+                  <View style={s.typesRow}>
+                    {Object.entries(ELEMENT_TYPE_META).map(([key, meta]) => {
+                      const isActive = selectedElement.type === key;
+                      return (
+                        <Pressable
+                          key={key}
+                          style={[
+                            s.typeSelectBtn,
+                            isActive && { backgroundColor: meta.color + "22", borderColor: meta.color },
+                          ]}
+                          onPress={() => {
+                            const updated = floors.map((f) => {
+                              if (f.id === selectedFloorId) {
+                                return {
+                                  ...f,
+                                  elements: f.elements.map((el) =>
+                                    el.id === selectedElement.id ? { ...el, type: key as any } : el
+                                  ),
+                                };
+                              }
+                              return f;
+                            });
+                            setFloors(updated);
+                            handleSaveChanges(updated);
+                          }}
+                        >
+                          <MaterialCommunityIcons
+                            name={meta.icon}
+                            size={16}
+                            color={isActive ? meta.color : COLORS.muted}
+                          />
+                          <Text style={[s.typeSelectText, isActive && { color: meta.color, fontWeight: "800" }]}>
+                            {meta.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={s.field}>
+                  <Text style={s.fieldLabel}>Forma del Elemento</Text>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <Pressable
+                      style={[
+                        s.typeSelectBtn,
+                        { flex: 1, height: 38 },
+                        !selectedElement.isCircle && { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary }
+                      ]}
+                      onPress={() => handleToggleElementShape(selectedElement.id, false)}
+                    >
+                      <MaterialCommunityIcons
+                        name="square-outline"
+                        size={16}
+                        color={!selectedElement.isCircle ? COLORS.primary : COLORS.muted}
+                      />
+                      <Text style={[s.typeSelectText, !selectedElement.isCircle && { color: COLORS.primary, fontWeight: "800" }]}>
+                        Rectángulo
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      style={[
+                        s.typeSelectBtn,
+                        { flex: 1, height: 38 },
+                        selectedElement.isCircle && { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary }
+                      ]}
+                      onPress={() => handleToggleElementShape(selectedElement.id, true)}
+                    >
+                      <MaterialCommunityIcons
+                        name="circle-outline"
+                        size={16}
+                        color={selectedElement.isCircle ? COLORS.primary : COLORS.muted}
+                      />
+                      <Text style={[s.typeSelectText, selectedElement.isCircle && { color: COLORS.primary, fontWeight: "800" }]}>
+                        Círculo
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </>
+            )}
+
+            {!isMobile && (
+              <>
+                <View style={s.divider} />
+
+                {/* TAMAÑO / DIMENSIONES */}
+                <View style={s.sizeControlRow}>
+                  <View style={s.sizeControlField}>
+                    <Text style={s.fieldLabel}>Ancho (Plano)</Text>
+                    <View style={s.stepperRow}>
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newWidth = Math.max(3, (selectedElement.width || 8) - 5);
+                          updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>-5</Text>
+                      </Pressable>
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newWidth = Math.max(3, (selectedElement.width || 8) - 1);
+                          updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>-1</Text>
+                      </Pressable>
+                      
+                      <TextInput
+                        style={s.stepperInput}
+                        keyboardType="numeric"
+                        value={selectedElement.width === 0 ? "" : String(selectedElement.width || 8)}
+                        onChangeText={(val) => {
+                          const parsed = parseInt(val, 10);
+                          if (!isNaN(parsed)) {
+                            const constrained = Math.max(1, Math.min(100, parsed));
+                            updateElementSize(selectedElement.id, constrained, selectedElement.height || 12);
+                          } else if (val === "") {
+                            updateElementSize(selectedElement.id, 0, selectedElement.height || 12);
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!selectedElement.width) {
+                            updateElementSize(selectedElement.id, 8, selectedElement.height || 12);
+                          }
+                        }}
+                      />
+                      <Text style={s.percentSymbol}>%</Text>
+
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newWidth = Math.min(100, (selectedElement.width || 8) + 1);
+                          updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>+1</Text>
+                      </Pressable>
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newWidth = Math.min(100, (selectedElement.width || 8) + 5);
+                          updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>+5</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  <View style={s.sizeControlField}>
+                    <Text style={s.fieldLabel}>Alto (Plano)</Text>
+                    <View style={s.stepperRow}>
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newHeight = Math.max(3, (selectedElement.height || 12) - 5);
+                          updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>-5</Text>
+                      </Pressable>
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newHeight = Math.max(3, (selectedElement.height || 12) - 1);
+                          updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>-1</Text>
+                      </Pressable>
+                      
+                      <TextInput
+                        style={s.stepperInput}
+                        keyboardType="numeric"
+                        value={selectedElement.height === 0 ? "" : String(selectedElement.height || 12)}
+                        onChangeText={(val) => {
+                          const parsed = parseInt(val, 10);
+                          if (!isNaN(parsed)) {
+                            const constrained = Math.max(1, Math.min(100, parsed));
+                            updateElementSize(selectedElement.id, selectedElement.width || 8, constrained);
+                          } else if (val === "") {
+                            updateElementSize(selectedElement.id, selectedElement.width || 8, 0);
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!selectedElement.height) {
+                            updateElementSize(selectedElement.id, selectedElement.width || 8, 12);
+                          }
+                        }}
+                      />
+                      <Text style={s.percentSymbol}>%</Text>
+
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newHeight = Math.min(100, (selectedElement.height || 12) + 1);
+                          updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>+1</Text>
+                      </Pressable>
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newHeight = Math.min(100, (selectedElement.height || 12) + 5);
+                          updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>+5</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={s.sizeControlRow}>
+                  <View style={s.sizeControlField}>
+                    <Text style={s.fieldLabel}>Posición X (Centro)</Text>
+                    <View style={s.stepperRow}>
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newX = Math.max(0, (selectedElement.x) - 5);
+                          updateElementPosition(selectedElement.id, newX, selectedElement.y);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>-5</Text>
+                      </Pressable>
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newX = Math.max(0, (selectedElement.x) - 1);
+                          updateElementPosition(selectedElement.id, newX, selectedElement.y);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>-1</Text>
+                      </Pressable>
+                      
+                      <TextInput
+                        style={s.stepperInput}
+                        keyboardType="numeric"
+                        value={String(selectedElement.x)}
+                        onChangeText={(val) => {
+                          const parsed = parseFloat(val);
+                          if (!isNaN(parsed)) {
+                            const constrained = Math.max(0, Math.min(100, parsed));
+                            updateElementPosition(selectedElement.id, constrained, selectedElement.y);
+                          }
+                        }}
+                      />
+                      <Text style={s.percentSymbol}>%</Text>
+
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newX = Math.min(100, (selectedElement.x) + 1);
+                          updateElementPosition(selectedElement.id, newX, selectedElement.y);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>+1</Text>
+                      </Pressable>
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newX = Math.min(100, (selectedElement.x) + 5);
+                          updateElementPosition(selectedElement.id, newX, selectedElement.y);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>+5</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  <View style={s.sizeControlField}>
+                    <Text style={s.fieldLabel}>Posición Y (Centro)</Text>
+                    <View style={s.stepperRow}>
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newY = Math.max(0, (selectedElement.y) - 5);
+                          updateElementPosition(selectedElement.id, selectedElement.x, newY);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>-5</Text>
+                      </Pressable>
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newY = Math.max(0, (selectedElement.y) - 1);
+                          updateElementPosition(selectedElement.id, selectedElement.x, newY);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>-1</Text>
+                      </Pressable>
+                      
+                      <TextInput
+                        style={s.stepperInput}
+                        keyboardType="numeric"
+                        value={String(selectedElement.y)}
+                        onChangeText={(val) => {
+                          const parsed = parseFloat(val);
+                          if (!isNaN(parsed)) {
+                            const constrained = Math.max(0, Math.min(100, parsed));
+                            updateElementPosition(selectedElement.id, selectedElement.x, constrained);
+                          }
+                        }}
+                      />
+                      <Text style={s.percentSymbol}>%</Text>
+
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newY = Math.min(100, (selectedElement.y) + 1);
+                          updateElementPosition(selectedElement.id, selectedElement.x, newY);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>+1</Text>
+                      </Pressable>
+                      <Pressable
+                        style={s.stepperSmallBtn}
+                        onPress={() => {
+                          const newY = Math.min(100, (selectedElement.y) + 5);
+                          updateElementPosition(selectedElement.id, selectedElement.x, newY);
+                        }}
+                      >
+                        <Text style={s.stepperSmallBtnText}>+5</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={s.divider} />
+              </>
+            )}
+
+            {/* MOVIE ASSIGNMENT & TMDB POSTER FETCH */}
+            <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Asignar Película / Poster</Text>
+              {selectedElement.posterUrl ? (
+                <View style={s.currentPosterContainer}>
+                  <Image source={{ uri: selectedElement.posterUrl }} style={s.currentPosterImage as any} />
+                  <View style={s.currentPosterInfo}>
+                    <Text style={s.currentPosterMovieName}>{selectedElement.movieName}</Text>
+                    <Pressable
+                      style={s.removePosterBtn}
+                      onPress={() => {
+                        const updated = floors.map((f) => {
+                          if (f.id === selectedFloorId) {
+                            return {
+                              ...f,
+                              elements: f.elements.map((el) =>
+                                el.id === selectedElement.id
+                                  ? { ...el, movieName: "", posterUrl: "" }
+                                  : el
+                              ),
+                            };
+                          }
+                          return f;
+                        });
+                        setFloors(updated);
+                        handleSaveChanges(updated);
+                      }}
+                    >
+                      <MaterialCommunityIcons name="image-remove" size={14} color={COLORS.danger} />
+                      <Text style={s.removePosterBtnText}>Quitar Póster</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <View style={s.noPosterBadge}>
+                  <Text style={s.noPosterText}>No hay póster asignado</Text>
+                </View>
+              )}
+
+              <View style={s.searchFieldWrap}>
+                <TextInput
+                  style={s.textInputSearch}
+                  placeholder="Escribir título de la película..."
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  onSubmitEditing={handleSearchPoster}
+                />
+                <Pressable
+                  style={[s.searchSubmitBtn, searchingPoster && s.searchSubmitBtnDisabled]}
+                  onPress={handleSearchPoster}
+                  disabled={searchingPoster}
+                >
+                  {searchingPoster ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <MaterialCommunityIcons name="magnify" size={18} color="#fff" />
+                  )}
+                </Pressable>
+              </View>
+
+              {/* Opción de ingreso de URL directa */}
+              <View style={{ marginTop: 10, gap: 4 }}>
+                <Text style={{ fontSize: 11, color: COLORS.muted, fontWeight: "600" }}>
+                  O pegar URL directa de imagen (externa o de tu servidor):
+                </Text>
+                <View style={s.searchFieldWrap}>
+                  <TextInput
+                    style={[s.textInputSearch, { fontSize: 12 }]}
+                    placeholder="https://ejemplo.com/poster.jpg"
+                    placeholderTextColor={COLORS.muted}
+                    value={directPosterUrl}
+                    onChangeText={setDirectPosterUrl}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+                  <Pressable
+                    style={[s.searchSubmitBtn, { backgroundColor: "#10b981" }]}
+                    onPress={() => {
+                      if (!directPosterUrl.trim()) return;
+                      assignPoster(selectedElement.movieName || selectedElement.name || "Póster URL", directPosterUrl.trim());
+                    }}
+                  >
+                    <MaterialCommunityIcons name="link-plus" size={18} color="#fff" />
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+
+            {/* SEARCH SUGGESTIONS */}
+            {searchResults.length > 0 && (
+              <View style={s.searchResultsCard}>
+                <Text style={s.searchResultsTitle}>Resultados de Búsqueda:</Text>
+                {searchResults.map((movie) => (
+                  <Pressable
+                    key={movie.id}
+                    style={s.searchResultRow}
+                    onPress={() => assignPoster(movie.title, movie.poster_path)}
+                  >
+                    {movie.poster_path ? (
+                      <Image
+                        source={{
+                          uri: movie.poster_path.startsWith("data:") || (process.env.EXPO_PUBLIC_API_URL && movie.poster_path.includes(process.env.EXPO_PUBLIC_API_URL))
+                            ? movie.poster_path
+                            : `${process.env.EXPO_PUBLIC_BACKEND_URL || ""}/api/cinemark/poster?url=${encodeURIComponent(
+                                movie.poster_path.startsWith("http")
+                                  ? movie.poster_path
+                                  : `https://image.tmdb.org/t/p/w92${movie.poster_path}`
+                              )}`,
+                        }}
+                        style={s.searchResultThumb as any}
+                      />
+                    ) : (
+                      <View style={s.searchResultThumbFallback}>
+                        <MaterialCommunityIcons name="movie-outline" size={14} color={COLORS.muted} />
+                      </View>
+                    )}
+                    <View style={s.searchResultTextContainer}>
+                      <Text style={s.searchResultName} numberOfLines={1}>
+                        {movie.isCustom ? `🎨 [Personalizado] ${movie.title}` : movie.title}
+                      </Text>
+                      {!!movie.release_date && (
+                        <Text style={s.searchResultMeta}>Año: {movie.release_date.split("-")[0]}</Text>
+                      )}
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </ScrollView>
+        ) : (
+          <View style={s.sidebarEmpty}>
+            <MaterialCommunityIcons name="gesture-tap" size={32} color={COLORS.muted} />
+            <Text style={s.sidebarEmptyText}>
+              Hacé clic en cualquier elemento del mapa para editar sus detalles o asignarle una película.
+            </Text>
+          </View>
+        )}
+      </View>
+    </>
+  );
+
+  return (
+    <View style={s.container}>
+      {!isMobile ? (
+        <>
+          {/* HEADER CONTROLS (fixed on desktop) */}
+          <View style={s.topBar}>
+            <View style={s.floorsTabsScroll}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.floorsTabs}>
+                {floors.map((floor) => {
+                  const isSelected = floor.id === selectedFloorId;
+                  return (
+                    <View key={floor.id} style={[s.floorTabWrap, isSelected && s.floorTabActive]}>
+                      {isSelected ? (
+                        <TextInput
+                          style={[s.floorTabText, s.floorTabInput]}
+                          value={floor.name}
+                          onChangeText={(val) => handleRenameFloor(floor.id, val)}
+                          placeholder="Nombre del Piso"
+                        />
+                      ) : (
+                        <Pressable onPress={() => { setSelectedFloorId(floor.id); setSelectedElementId(null); setSelectedElementIds([]); }}>
+                          <Text style={[s.floorTabText, s.floorTabInactiveText]}>{floor.name}</Text>
+                        </Pressable>
+                      )}
+                      {isSelected && (
+                        <Pressable style={s.floorDeleteBtn} onPress={() => handleDeleteFloor(floor.id)}>
+                          <MaterialCommunityIcons name="close-circle" size={16} color={COLORS.danger} />
+                        </Pressable>
+                      )}
+                    </View>
+                  );
+                })}
+                <Pressable style={s.addFloorBtn} onPress={handleAddFloor}>
+                  <MaterialCommunityIcons name="plus" size={16} color={COLORS.primary} />
+                  <Text style={s.addFloorText}>Piso</Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+
+            <View style={s.actionsRow}>
+              <Pressable style={[s.iconBtn, { backgroundColor: "#0284c7" }]} onPress={handleExportPNG}>
+                <MaterialCommunityIcons name="image-outline" size={18} color="#fff" />
+                <Text style={s.btnText}>Exportar PNG</Text>
+              </Pressable>
+
+              <Pressable style={[s.iconBtn, printing && s.btnDisabled]} onPress={handlePrint} disabled={printing}>
+                {printing ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="printer" size={18} color="#fff" />
+                    <Text style={s.btnText}>Imprimir / PDF</Text>
+                  </>
+                )}
+              </Pressable>
+
+              <Pressable style={[s.iconBtn, s.saveBtn, saving && s.btnDisabled]} onPress={() => handleSaveChanges()} disabled={saving}>
+                {saving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="content-save-outline" size={18} color="#fff" />
+                    <Text style={s.btnText}>Guardar</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={s.mainWorkspace}>
+            {workspaceContent}
+          </View>
+        </>
+      ) : (
+        <ScrollView
+          style={[s.mainWorkspace, { flexDirection: "column" }]}
+          contentContainerStyle={{ paddingBottom: 40 }}
+          scrollEnabled={!isDraggingOrPanning}
+        >
+          {/* HEADER CONTROLS (inside ScrollView on mobile, so it scrolls away) */}
+          <View style={[s.topBar, { flexDirection: "column", alignItems: "stretch", gap: 10, borderBottomWidth: 0 }]}>
+            <View style={s.floorsTabsScroll}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.floorsTabs}>
+                {floors.map((floor) => {
+                  const isSelected = floor.id === selectedFloorId;
+                  return (
+                    <View key={floor.id} style={[s.floorTabWrap, isSelected && s.floorTabActive]}>
+                      {isSelected ? (
+                        <TextInput
+                          style={[s.floorTabText, s.floorTabInput]}
+                          value={floor.name}
+                          onChangeText={(val) => handleRenameFloor(floor.id, val)}
+                          placeholder="Nombre del Piso"
+                        />
+                      ) : (
+                        <Pressable onPress={() => { setSelectedFloorId(floor.id); setSelectedElementId(null); setSelectedElementIds([]); }}>
+                          <Text style={[s.floorTabText, s.floorTabInactiveText]}>{floor.name}</Text>
+                        </Pressable>
+                      )}
+                      {isSelected && (
+                        <Pressable style={s.floorDeleteBtn} onPress={() => handleDeleteFloor(floor.id)}>
+                          <MaterialCommunityIcons name="close-circle" size={16} color={COLORS.danger} />
+                        </Pressable>
+                      )}
+                    </View>
+                  );
+                })}
+                <Pressable style={s.addFloorBtn} onPress={handleAddFloor}>
+                  <MaterialCommunityIcons name="plus" size={16} color={COLORS.primary} />
+                  <Text style={s.addFloorText}>Piso</Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+
+            <View style={s.actionsRow}>
+              <Pressable style={[s.iconBtn, { backgroundColor: "#0284c7" }]} onPress={handleExportPNG}>
+                <MaterialCommunityIcons name="image-outline" size={18} color="#fff" />
+                <Text style={s.btnText}>Exportar PNG</Text>
+              </Pressable>
+
+              <Pressable style={[s.iconBtn, printing && s.btnDisabled]} onPress={handlePrint} disabled={printing}>
+                {printing ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="printer" size={18} color="#fff" />
+                    <Text style={s.btnText}>Imprimir / PDF</Text>
+                  </>
+                )}
+              </Pressable>
+
+              <Pressable style={[s.iconBtn, s.saveBtn, saving && s.btnDisabled]} onPress={() => handleSaveChanges()} disabled={saving}>
+                {saving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="content-save-outline" size={18} color="#fff" />
+                    <Text style={s.btnText}>Guardar</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </View>
+
+          {/* WARNING BANNER (inside ScrollView on mobile, so it scrolls away) */}
+          <View style={[s.mobileWarningBanner, { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary, marginHorizontal: 16, marginTop: 10, borderRadius: 8 }]}>
+            <MaterialCommunityIcons name="gesture-swipe" size={16} color={COLORS.primary} />
+            <Text style={[s.mobileWarningText, { color: COLORS.primary }]}>
+              ¡Arrastrá el fondo con un dedo para navegar por el plano! Tocá un elemento para cambiar su póster.
+            </Text>
+          </View>
+
+          {workspaceContent}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+  },
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.bg,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: COLORS.muted,
+    fontWeight: "600",
+  },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: COLORS.card,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+    zIndex: 10,
+  },
+  floorsTabsScroll: {
+    flex: 1,
+    marginRight: 16,
+  },
+  floorsTabs: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  floorTabWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 10,
+    height: 36,
+  },
+  floorTabActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primarySoft,
+  },
+  floorTabText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  floorTabInactiveText: {
+    color: COLORS.muted,
+  },
+  floorTabInput: {
+    padding: 0,
+    minWidth: 80,
+    color: COLORS.primary,
+  },
+  floorDeleteBtn: {
+    marginLeft: 6,
+    padding: 2,
+  },
+  addFloorBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderStyle: "dashed",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 36,
+  },
+  addFloorText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.primary,
+  },
+  actionsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  iconBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#64748b",
+    paddingHorizontal: 12,
+    height: 36,
+    borderRadius: 8,
+    justifyContent: "center",
+  },
+  saveBtn: {
+    backgroundColor: COLORS.primary,
+  },
+  btnDisabled: {
+    opacity: 0.5,
+  },
+  btnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mainWorkspace: {
+    flex: 1,
+    flexDirection: Platform.OS === "web" ? "row" : "column",
+  },
+  paletteCard: {
+    width: Platform.OS === "web" ? 180 : "100%",
+    backgroundColor: COLORS.card,
+    borderRightWidth: Platform.OS === "web" ? 1 : 0,
+    borderBottomWidth: Platform.OS === "web" ? 0 : 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    gap: 12,
+  },
+  paletteTitle: {
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: COLORS.text,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  paletteButtons: {
+    gap: 8,
+    flexDirection: Platform.OS === "web" ? "column" : "row",
+    flexWrap: "wrap",
+  },
+  paletteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: COLORS.bg,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderLeftWidth: 4,
+    minWidth: 120,
+  },
+  paletteBtnText: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  canvasContainer: {
+    flex: 1,
+    padding: 16,
+    gap: 10,
+  },
+  canvasHelpText: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontStyle: "italic",
+  },
+  canvas: {
+    height: "100%",
+    position: "absolute",
+    ...Platform.select({
+      web: {
+        backgroundImage: "radial-gradient(#cbd5e1 1.2px, #f8fafc 1.2px)",
+        backgroundSize: "20px 20px",
+      },
+    }),
+  },
+  guideLineH: {
+    position: "absolute",
+    width: "100%",
+    height: 0,
+    borderTopWidth: 1,
+    borderColor: "#cbd5e1",
+    borderStyle: "dashed",
+    top: "50%",
+    opacity: 0.5,
+  },
+  guideLineV: {
+    position: "absolute",
+    width: 0,
+    height: "100%",
+    borderLeftWidth: 1,
+    borderColor: "#cbd5e1",
+    borderStyle: "dashed",
+    left: "50%",
+    opacity: 0.5,
+  },
+  elementMarker: {
+    position: "absolute",
+    borderRadius: 8,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 6,
+    backgroundColor: COLORS.card,
+    ...THEME.shadow.soft,
+    ...Platform.select({
+      web: {
+        cursor: "move",
+        userSelect: "none",
+      } as any,
+      default: {},
+    }),
+  },
+  elementMarkerWithPoster: {
+    borderWidth: 1,
+  },
+  elementPosterBg: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 6,
+    opacity: 0.85,
+  },
+  elementMarkerNumberBadge: {
+    position: "absolute",
+    top: -8,
+    left: -8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#fff",
+    zIndex: 5,
+  },
+  elementMarkerNumberText: {
+    fontSize: 9.5,
+    fontWeight: "900",
+    color: "#fff",
+  },
+  elementMarkerCenterText: {
+    fontSize: 9,
+    fontWeight: "900",
+    color: COLORS.text,
+    textAlign: "center",
+    paddingHorizontal: 2,
+  },
+  elementZocalo: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+    borderBottomLeftRadius: 5,
+    borderBottomRightRadius: 5,
+  },
+  elementZocaloText: {
+    color: "#fff",
+    fontSize: 7.5,
+    fontWeight: "bold",
+    textTransform: "uppercase",
+  },
+  sidebar: {
+    width: Platform.OS === "web" ? 300 : "100%",
+    backgroundColor: COLORS.card,
+    borderLeftWidth: Platform.OS === "web" ? 1 : 0,
+    borderTopWidth: Platform.OS === "web" ? 0 : 1,
+    borderColor: COLORS.border,
+  },
+  sidebarContent: {
+    padding: 20,
+    gap: 16,
+  },
+  sidebarHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  sidebarTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+  deleteBtn: {
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: COLORS.dangerSoft,
+  },
+  field: {
+    gap: 8,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.muted,
+    textTransform: "uppercase",
+  },
+  sidebarSectionTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 38,
+    fontSize: 13,
+    color: COLORS.text,
+    backgroundColor: COLORS.bg,
+  },
+  typesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  typeSelectBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: COLORS.bg,
+  },
+  typeSelectText: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontWeight: "600",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: 4,
+  },
+  noPosterBadge: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderStyle: "dashed",
+    padding: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  noPosterText: {
+    fontSize: 12,
+    color: COLORS.muted,
+    fontStyle: "italic",
+  },
+  currentPosterContainer: {
+    flexDirection: "row",
+    backgroundColor: COLORS.bg,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 10,
+    gap: 12,
+  },
+  currentPosterImage: {
+    width: 60,
+    height: 90,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  currentPosterInfo: {
+    flex: 1,
+    justifyContent: "space-between",
+    paddingVertical: 4,
+  },
+  currentPosterMovieName: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+  removePosterBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.dangerSoft,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+  },
+  removePosterBtnText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.danger,
+  },
+  searchFieldWrap: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 6,
+  },
+  textInputSearch: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 38,
+    fontSize: 13,
+    color: COLORS.text,
+    backgroundColor: COLORS.bg,
+  },
+  searchSubmitBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  searchSubmitBtnDisabled: {
+    opacity: 0.6,
+  },
+  searchResultsCard: {
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    padding: 8,
+    gap: 6,
+  },
+  searchResultsTitle: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.muted,
+    marginBottom: 2,
+  },
+  searchResultRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: COLORS.card,
+    borderRadius: 6,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  searchResultThumb: {
+    width: 24,
+    height: 36,
+    borderRadius: 4,
+  },
+  searchResultThumbFallback: {
+    width: 24,
+    height: 36,
+    borderRadius: 4,
+    backgroundColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  searchResultTextContainer: {
+    flex: 1,
+  },
+  searchResultName: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+  searchResultMeta: {
+    fontSize: 9.5,
+    color: COLORS.muted,
+    marginTop: 2,
+  },
+  sidebarEmpty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 30,
+    gap: 16,
+  },
+  sidebarEmptyText: {
+    fontSize: 12,
+    color: COLORS.muted,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  sizeControlRow: {
+    flexDirection: "column",
+    gap: 12,
+  },
+  sizeControlField: {
+    flex: 1,
+    gap: 6,
+  },
+  stepperRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    height: 38,
+    overflow: "hidden",
+  },
+  stepperSmallBtn: {
+    width: 28,
+    height: "100%",
+    backgroundColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepperSmallBtnText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+  stepperInput: {
+    flex: 1,
+    minWidth: 0,
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: "900",
+    color: COLORS.text,
+    padding: 0,
+    height: "100%",
+  },
+  percentSymbol: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.muted,
+    marginRight: 4,
+  },
+  sidebarActionsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  lockToggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    height: 32,
+    backgroundColor: COLORS.bg,
+  },
+  lockToggleBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  lockToggleBtnText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.muted,
+  },
+  replicateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    height: 32,
+    backgroundColor: COLORS.primarySoft,
+  },
+  replicateBtnText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.primary,
+  },
+  lockBadge: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.danger,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#fff",
+    zIndex: 5,
+    ...THEME.shadow.soft,
+  },
+  mobileWarningBanner: {
+    backgroundColor: COLORS.warningBg,
+    borderColor: COLORS.warningBorder,
+    borderWidth: 1,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  mobileWarningText: {
+    color: COLORS.warning,
+    fontSize: 12,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  canvasHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  snapToggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: COLORS.bg,
+  },
+  snapToggleBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  snapToggleText: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontWeight: "700",
+  },
+  canvasViewport: {
+    flex: 1,
+    minHeight: 450,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
+    backgroundColor: "#f1f5f9",
+    position: "relative",
+  },
+  canvasControlsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  zoomSliderContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    height: 28,
+    gap: 6,
+  },
+  zoomLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginRight: 4,
+  },
+  zoomBtn: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    backgroundColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  zoomBtnText: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: COLORS.text,
+    lineHeight: 18,
+  },
+  dimensionsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    height: 28,
+    gap: 6,
+  },
+  dimLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.muted,
+  },
+  dimInput: {
+    width: 42,
+    height: 20,
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.text,
+    textAlign: "center",
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 4,
+    padding: 0,
+  },
+  lockAllBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    height: 28,
+    backgroundColor: COLORS.bg,
+  },
+  lockAllText: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontWeight: "700",
+  },
+});

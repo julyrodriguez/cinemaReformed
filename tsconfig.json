@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": false,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "react-native": ["./src/shims/react-native.tsx"],
+      "@expo/vector-icons": ["./src/shims/expo-vector-icons.tsx"],
+      "@react-native-async-storage/async-storage": ["./src/shims/async-storage.ts"],
+      "@react-native-community/datetimepicker": ["./src/shims/datetimepicker.tsx"],
+      "expo-document-picker": ["./src/shims/expo-document-picker.ts"],
+      "expo-print": ["./src/shims/expo-print.ts"],
+      "expo-sharing": ["./src/shims/expo-sharing.ts"],
+      "expo-file-system": ["./src/shims/expo-file-system.ts"],
+      "expo-file-system/legacy": ["./src/shims/expo-file-system.ts"],
+      "expo-router": ["./src/shims/expo-router.tsx"],
+      "expo-router/head": ["./src/shims/expo-router-head.tsx"],
+      "react-native-calendars": ["./src/shims/react-native-calendars.tsx"]
+    }
+  },
+  "include": ["src"]
+}
