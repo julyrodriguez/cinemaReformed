@@ -1735,7 +1735,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg },
+  root: { flex: 1, backgroundColor: "transparent" },
   scroll: { flex: 1 },
   content: { padding: 16, gap: 16, paddingBottom: 40 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },

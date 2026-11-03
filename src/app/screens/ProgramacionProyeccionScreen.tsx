@@ -3212,7 +3212,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           <View style={[
             styles.mainLayoutRow,
             { zIndex: 10 },
-            Platform.OS === "web" ? { position: "sticky" as any, top: 0, backgroundColor: COLORS.bg } : {}
+            Platform.OS === "web" ? { position: "sticky" as any, top: 0, backgroundColor: "var(--page-bg, #F8FAFC)" } : {}
           ]}>
             {/* Corner intersection block */}
             <View style={[styles.cornerHeaderCell, { width: currentRoomColWidth }]}>
@@ -3791,7 +3791,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: "transparent",
   },
   adjustmentBar: {
     flexDirection: "row",
@@ -3857,7 +3857,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: THEME.spacing.xl,
-    backgroundColor: COLORS.bg,
+    backgroundColor: "transparent",
   },
   loadingText: {
     marginTop: THEME.spacing.md,

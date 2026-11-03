@@ -2369,7 +2369,7 @@ export default function CierreMesScreen({ readOnly = false }: { readOnly?: boole
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg },
+  root: { flex: 1, backgroundColor: "transparent" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   loadingText: { color: COLORS.muted, fontSize: 14 },
   scroll: { flex: 1 },

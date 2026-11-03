@@ -2913,13 +2913,13 @@ export default function MapaBannersScreen() {
 const s = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: "transparent",
   },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.bg,
+    backgroundColor: "transparent",
     gap: 12,
   },
   loadingText: {

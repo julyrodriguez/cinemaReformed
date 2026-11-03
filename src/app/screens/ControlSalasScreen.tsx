@@ -2921,7 +2921,7 @@ export default function ControlSalasScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: "transparent",
   },
   tabsCard: {
     backgroundColor: COLORS.card,

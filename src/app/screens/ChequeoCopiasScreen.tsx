@@ -1765,7 +1765,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
 const s = StyleSheet.create({
   main: {
     flex: 1,
-    backgroundColor: COLORS.bgMobile,
+    backgroundColor: "transparent",
   },
   content: {
     padding: THEME.spacing.lg,

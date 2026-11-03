@@ -799,18 +799,6 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
           </>
         )}
 
-        {/* Floating Quick-Add Pill */}
-        {!readOnly && (
-          <button
-            type="button"
-            onClick={openNew}
-            className="fixed bottom-6 right-6 z-30 inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-slate-900/25 ring-1 ring-white/10 hover:bg-rose-600 dark:bg-rose-600 dark:hover:bg-rose-500"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Ingresar DCP</span>
-          </button>
-        )}
-
         {/* ── RETIRE CONFIRM MODAL ── */}
         {showRetireConfirm && (
           <div className="animate-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-xs">

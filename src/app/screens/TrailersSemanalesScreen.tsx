@@ -1482,7 +1482,7 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
 }
 
 const s = StyleSheet.create({
-  main: { flex: 1, backgroundColor: COLORS.bg },
+  main: { flex: 1, backgroundColor: "transparent" },
   content: { padding: 16, gap: 16, paddingBottom: 40 },
 
   // Base card
