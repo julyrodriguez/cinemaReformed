@@ -36,6 +36,8 @@ import {
   CheckCircle2,
   Play,
   Lightbulb,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { doc, onSnapshot, getDoc, collection } from "@/lib/dbService";
 import { db, CINES_COLLECTION, functions } from "../../lib/firebaseConfig";
@@ -332,6 +334,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [loadingSeatMap, setLoadingSeatMap] = useState<boolean>(false);
   const [seatMapError, setSeatMapError] = useState<string | null>(null);
   const [showSeatMap, setShowSeatMap] = useState<boolean>(false);
+  const [isModalMaximized, setIsModalMaximized] = useState<boolean>(false);
 
   const [activeSalaLayout, setActiveSalaLayout] = useState<RoomLayout | null>(null);
 
@@ -405,6 +408,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     setShowSeatMap(false);
     setSeatMapData(null);
     setSeatMapError(null);
+    setIsModalMaximized(false);
   };
 
   useEffect(() => {
@@ -539,11 +543,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const occupancyPct = totalPhysicalSeats > 0 ? Math.round((soldSeatsCount / totalPhysicalSeats) * 100) : 0;
 
     return (
-      <div className="w-full flex flex-col gap-3">
-        {/* Occupancy Summary Card */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-100/90 dark:bg-zinc-800/60 border border-slate-200/80 dark:border-zinc-700/60">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs border ${
+      <div className="w-full h-full flex flex-col gap-2.5 min-h-0 overflow-hidden">
+        {/* Consolidated Top Bar: Occupancy Stats + Legend in a single sleek horizontal strip */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-2xl bg-slate-100/90 dark:bg-zinc-800/60 border border-slate-200/80 dark:border-zinc-700/60 shrink-0">
+          {/* Stats & Progress */}
+          <div className="flex items-center gap-2.5">
+            <div className={`px-2 py-0.5 rounded-lg flex items-center justify-center font-black text-xs border ${
               occupancyPct >= 80 
                 ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20" 
                 : occupancyPct >= 40 
@@ -552,18 +557,14 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             }`}>
               {occupancyPct}%
             </div>
-            <div>
-              <div className="text-xs font-black text-slate-800 dark:text-zinc-200">
-                {soldSeatsCount} de {totalPhysicalSeats} butacas vendidas
-              </div>
-              <div className="text-[11px] text-slate-500 dark:text-zinc-400">
-                {freeSeatsCount} disponibles para esta función
-              </div>
+            <div className="text-xs">
+              <span className="font-black text-slate-800 dark:text-zinc-200">{soldSeatsCount}</span>
+              <span className="text-slate-400 dark:text-zinc-500"> / {totalPhysicalSeats} butacas</span>
+              <span className="hidden sm:inline text-slate-300 dark:text-zinc-600 mx-1">·</span>
+              <span className="hidden sm:inline font-bold text-emerald-600 dark:text-emerald-400">{freeSeatsCount} libres</span>
             </div>
-          </div>
-          {/* Progress Bar */}
-          <div className="w-full sm:w-48 flex flex-col gap-1">
-            <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-zinc-700 overflow-hidden">
+            {/* Mini Progress Bar */}
+            <div className="hidden md:block w-24 h-1.5 rounded-full bg-slate-200 dark:bg-zinc-700 overflow-hidden ml-1">
               <div 
                 className={`h-full rounded-full transition-all duration-500 ${
                   occupancyPct >= 80 ? "bg-rose-500" : occupancyPct >= 40 ? "bg-amber-500" : "bg-emerald-500"
@@ -571,54 +572,48 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 style={{ width: `${Math.min(100, occupancyPct)}%` }}
               />
             </div>
-            <div className="flex justify-between text-[10px] font-semibold text-slate-400 dark:text-zinc-500">
-              <span>0%</span>
-              <span className="font-bold text-slate-700 dark:text-zinc-300">{occupancyPct}% ocupación</span>
-              <span>100%</span>
-            </div>
           </div>
-        </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap items-center justify-center gap-2 py-1 text-[11px] font-bold text-slate-600 dark:text-zinc-300">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200/70 dark:border-zinc-700/60 shadow-2xs">
-            <span className="w-3 h-3 rounded-sm bg-emerald-500" />
-            <span>Disponible ({freeSeatsCount})</span>
-          </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200/70 dark:border-zinc-700/60 shadow-2xs">
-            <span className="w-3 h-3 rounded-sm bg-rose-500" />
-            <span>Ocupado ({soldSeatsCount})</span>
-          </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200/70 dark:border-zinc-700/60 shadow-2xs">
-            <span className="w-3 h-3 rounded-sm bg-amber-500" />
-            <span>Mío / Bloq.</span>
-          </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200/70 dark:border-zinc-700/60 shadow-2xs">
-            <span className="w-3 h-3 rounded-sm bg-blue-600 flex items-center justify-center text-[8px] text-white font-bold">♿</span>
-            <span>Accesibilidad</span>
-          </div>
-          {dboxCount > 0 && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200/70 dark:border-zinc-700/60 shadow-2xs">
-              <span className="w-3 h-3 rounded-sm bg-slate-700 ring-2 ring-amber-400" />
-              <span>D-BOX ({dboxCount})</span>
+          {/* Compact Legend Pills */}
+          <div className="flex items-center gap-1.5 text-[10.5px] font-bold text-slate-600 dark:text-zinc-300">
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-200/60 dark:bg-zinc-900 border border-slate-300/60 dark:border-zinc-700/60">
+              <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500" />
+              <span>Libre ({freeSeatsCount})</span>
             </div>
-          )}
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-200/60 dark:bg-zinc-900 border border-slate-300/60 dark:border-zinc-700/60">
+              <span className="w-2.5 h-2.5 rounded-xs bg-rose-500" />
+              <span>Ocupada ({soldSeatsCount})</span>
+            </div>
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-200/60 dark:bg-zinc-900 border border-slate-300/60 dark:border-zinc-700/60">
+              <span className="w-2.5 h-2.5 rounded-xs bg-amber-500" />
+              <span>Mía</span>
+            </div>
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-200/60 dark:bg-zinc-900 border border-slate-300/60 dark:border-zinc-700/60">
+              <span className="w-2.5 h-2.5 rounded-xs bg-blue-600 flex items-center justify-center text-[7px] text-white">♿</span>
+              <span className="hidden sm:inline">Accesible</span>
+            </div>
+            {dboxCount > 0 && (
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-200/60 dark:bg-zinc-900 border border-slate-300/60 dark:border-zinc-700/60">
+                <span className="w-2.5 h-2.5 rounded-xs bg-slate-700 ring-2 ring-amber-400" />
+                <span>D-BOX ({dboxCount})</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Seat Grid Cinema Canvas */}
-        <div className="w-full rounded-2xl bg-slate-950 p-4 sm:p-5 border border-slate-800/90 shadow-inner flex flex-col items-center overflow-hidden">
+        <div className="w-full flex-1 min-h-0 rounded-2xl bg-slate-950 p-3 sm:p-4 border border-slate-800/90 shadow-inner flex flex-col items-center justify-start overflow-hidden">
           {/* Curved Screen Graphic */}
-          <div className="relative w-full max-w-sm mx-auto flex flex-col items-center mb-6">
-            <div className="w-4/5 h-3 border-t-[3px] border-rose-500/80 rounded-[50%] shadow-[0_-6px_16px_rgba(244,63,94,0.45)]" />
-            <span className="text-[10px] font-black tracking-[0.25em] text-slate-400 uppercase mt-1">
+          <div className="relative w-full max-w-xs mx-auto flex flex-col items-center mb-2 shrink-0">
+            <div className="w-full h-2.5 border-t-[3px] border-rose-500/80 rounded-[50%] shadow-[0_-4px_12px_rgba(244,63,94,0.4)]" />
+            <span className="text-[9px] font-black tracking-[0.25em] text-slate-400 uppercase mt-0.5">
               PANTALLA
             </span>
-            <div className="w-full h-6 bg-gradient-to-b from-rose-500/10 via-rose-500/5 to-transparent blur-sm -mt-1 pointer-events-none" />
           </div>
 
-          {/* Scrollable Layout */}
-          <div className="w-full overflow-x-auto pb-4 custom-scrollbar">
-            <div className="mx-auto flex flex-col items-center gap-1.5 w-max px-4">
+          {/* Scrollable Layout (centers content horizontally and vertically if it fits) */}
+          <div className="w-full flex-1 min-h-0 overflow-auto custom-scrollbar flex items-start justify-center">
+            <div className="mx-auto flex flex-col items-center gap-1 w-max px-3 py-1 m-auto">
               {layout.rows.map((rowName) => {
                 const rowSeats = layout.seats[rowName];
                 if (!rowSeats) return null;
@@ -634,16 +629,16 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
                 return (
                   <React.Fragment key={rowName}>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       {/* Left row letter badge */}
-                      <span className="w-6 h-6 rounded-md bg-slate-800 text-slate-300 font-black text-[11px] flex items-center justify-center shrink-0 shadow-xs border border-slate-700/60">
+                      <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-slate-800 text-slate-300 font-black text-[10px] sm:text-[11px] flex items-center justify-center shrink-0 shadow-xs border border-slate-700/60">
                         {rowName}
                       </span>
 
                       {/* Sections separated by aisles */}
                       {sections.map((section, idx) => (
                         <React.Fragment key={idx}>
-                          {idx > 0 && <div className="w-5 sm:w-6 shrink-0" />}
+                          {idx > 0 && <div className="w-4 sm:w-5 shrink-0" />}
                           <div className="flex items-center gap-1">
                             {section.map((seat) => {
                               if (seat.type === "empty") {
@@ -705,13 +700,13 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       ))}
 
                       {/* Right row letter badge */}
-                      <span className="w-6 h-6 rounded-md bg-slate-800 text-slate-300 font-black text-[11px] flex items-center justify-center shrink-0 shadow-xs border border-slate-700/60 ml-1">
+                      <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-slate-800 text-slate-300 font-black text-[10px] sm:text-[11px] flex items-center justify-center shrink-0 shadow-xs border border-slate-700/60 ml-0.5">
                         {rowName}
                       </span>
                     </div>
 
                     {/* Horizontal row aisle */}
-                    {layout.rowAisles?.includes(rowName) && <div className="h-3 w-full" />}
+                    {layout.rowAisles?.includes(rowName) && <div className="h-2 w-full" />}
                   </React.Fragment>
                 );
               })}
@@ -3698,332 +3693,335 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       {/* Modern Show Details Dialog */}
       {selectedShow && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-hidden animate-in fade-in duration-200"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCloseModal();
             }
           }}
         >
-          <div className="relative w-full max-w-5xl max-h-[92vh] flex flex-col rounded-3xl bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div
+            className={`relative w-full flex flex-col bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 shadow-2xl overflow-hidden transition-all duration-200 animate-in zoom-in-95 ${
+              isModalMaximized
+                ? "w-[99vw] h-[98vh] max-w-none max-h-none rounded-2xl"
+                : "w-[96vw] max-w-[1550px] 2xl:max-w-[1700px] h-[92vh] max-h-[920px] rounded-3xl"
+            }`}
+          >
             {/* Header */}
-            <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-100 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center border border-rose-500/20 shadow-2xs">
-                  <Clapperboard className="w-5 h-5" />
+            <div className="flex items-center justify-between px-5 sm:px-6 py-2.5 sm:py-3 border-b border-slate-100 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center border border-rose-500/20 shadow-2xs">
+                  <Clapperboard className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 dark:text-zinc-100 tracking-tight">
-                    Detalle de Función
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
+                    <span>Detalle de Función</span>
+                    <span className="text-xs px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 font-bold">
+                      Sala {selectedShow.sala}
+                    </span>
                   </h3>
-                  <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
-                    Sala {selectedShow.sala} · {selectedShow.inicio} a {selectedShow.fin} hs
+                  <p className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400">
+                    {selectedShow.pelicula} ({selectedShow.inicio} a {selectedShow.fin} hs)
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={handleCloseModal}
-                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-                title="Cerrar (Esc)"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIsModalMaximized(!isModalMaximized)}
+                  className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer hidden sm:flex items-center justify-center"
+                  title={isModalMaximized ? "Restaurar tamaño normal" : "Maximizar a pantalla completa"}
+                >
+                  {isModalMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCloseModal}
+                  className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                  title="Cerrar (Esc)"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
-            {/* Scrollable Body */}
-            <div className="overflow-y-auto p-4 sm:p-6 flex-1 custom-scrollbar">
-              <div className="flex flex-col lg:flex-row gap-6 w-full">
-                {/* Left Column: Movie Hero & Visual Projection Schedule */}
-                <div className="w-full lg:w-[410px] shrink-0 flex flex-col gap-4">
-                  {/* Poster & Main Info Card */}
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 flex gap-4">
-                    {selectedShow.posterUrl ? (
-                      <img
-                        src={selectedShow.posterUrl}
-                        alt={selectedShow.pelicula}
-                        className="w-24 sm:w-28 h-36 sm:h-40 object-cover rounded-2xl shadow-md border border-slate-200/80 dark:border-zinc-800 shrink-0 bg-slate-200 dark:bg-zinc-800"
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = "none";
-                        }}
-                      />
-                    ) : (
-                      <div className="w-24 sm:w-28 h-36 sm:h-40 rounded-2xl bg-slate-200/60 dark:bg-zinc-800/80 border border-slate-200/80 dark:border-zinc-800 flex flex-col items-center justify-center text-slate-400 shrink-0 shadow-inner">
-                        <Film className="w-8 h-8 mb-1 opacity-50" />
-                        <span className="text-[10px] font-bold">Sin Póster</span>
+            {/* Body */}
+            <div className="p-3 sm:p-4 lg:p-5 flex-1 min-h-0 flex flex-col lg:flex-row gap-4 lg:gap-5 overflow-hidden">
+              {/* Left Column: Movie Hero & Visual Projection Schedule */}
+              <div className="w-full lg:w-[330px] xl:w-[360px] shrink-0 h-auto lg:h-full flex flex-col gap-2.5 overflow-y-auto custom-scrollbar pr-1">
+                {/* Poster & Main Info Card */}
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 flex gap-3 shrink-0">
+                  {selectedShow.posterUrl ? (
+                    <img
+                      src={selectedShow.posterUrl}
+                      alt={selectedShow.pelicula}
+                      className="w-18 sm:w-20 h-26 sm:h-28 object-cover rounded-xl shadow-md border border-slate-200/80 dark:border-zinc-800 shrink-0 bg-slate-200 dark:bg-zinc-800"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <div className="w-18 sm:w-20 h-26 sm:h-28 rounded-xl bg-slate-200/60 dark:bg-zinc-800/80 border border-slate-200/80 dark:border-zinc-800 flex flex-col items-center justify-center text-slate-400 shrink-0 shadow-inner">
+                      <Film className="w-6 h-6 mb-1 opacity-50" />
+                      <span className="text-[9px] font-bold">Sin Póster</span>
+                    </div>
+                  )}
+
+                  <div className="flex-1 flex flex-col justify-between py-0.5 min-w-0">
+                    <div>
+                      <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-zinc-100 leading-snug line-clamp-2">
+                        {selectedShow.pelicula}
+                      </h4>
+                      <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                        <span className="px-2 py-0.5 rounded-md bg-rose-600 text-white text-[11px] font-black shadow-2xs">
+                          Sala {selectedShow.sala}
+                        </span>
+                        {selectedShow.isEvent && (
+                          <span className="px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/25 text-[10px] font-bold">
+                            Evento
+                          </span>
+                        )}
+                        {selectedShow.sessionFormat && (
+                          <span className="px-1.5 py-0.5 rounded-md bg-slate-200/80 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-300/80 dark:border-zinc-700 text-[10px] font-bold">
+                            {selectedShow.sessionFormat}
+                          </span>
+                        )}
+                        {selectedShow.language && (
+                          <span className="px-1.5 py-0.5 rounded-md bg-slate-200/80 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-300/80 dark:border-zinc-700 text-[10px] font-bold">
+                            {selectedShow.language}
+                          </span>
+                        )}
+                        {selectedShow.calificacion ? (
+                          <span className="px-1.5 py-0.5 rounded-md bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/25 text-[10px] font-bold">
+                            {selectedShow.calificacion}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* Event Extra Tags */}
+                    {(selectedShow.desayuno || selectedShow.combo) && (
+                      <div className="flex flex-wrap gap-1 mt-1 pt-1 border-t border-slate-200/70 dark:border-zinc-800">
+                        {selectedShow.desayuno && (
+                          <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400">
+                            ☕ Desayuno
+                          </span>
+                        )}
+                        {selectedShow.combo && (
+                          <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                            🍿 Combo
+                          </span>
+                        )}
                       </div>
                     )}
-
-                    <div className="flex-1 flex flex-col justify-between py-0.5 min-w-0">
-                      <div>
-                        <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-zinc-100 leading-tight line-clamp-2">
-                          {selectedShow.pelicula}
-                        </h4>
-                        <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-                          <span className="px-2.5 py-1 rounded-lg bg-rose-600 text-white text-xs font-black shadow-2xs">
-                            Sala {selectedShow.sala}
-                          </span>
-                          {selectedShow.isEvent && (
-                            <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/25 text-[11px] font-bold">
-                              Evento Especial
-                            </span>
-                          )}
-                          {selectedShow.sessionFormat && (
-                            <span className="px-2 py-0.5 rounded-lg bg-slate-200/80 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-300/80 dark:border-zinc-700 text-[11px] font-bold">
-                              {selectedShow.sessionFormat}
-                            </span>
-                          )}
-                          {selectedShow.language && (
-                            <span className="px-2 py-0.5 rounded-lg bg-slate-200/80 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-300/80 dark:border-zinc-700 text-[11px] font-bold">
-                              {selectedShow.language}
-                            </span>
-                          )}
-                          {selectedShow.calificacion ? (
-                            <span className="px-2 py-0.5 rounded-lg bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/25 text-[11px] font-bold">
-                              {selectedShow.calificacion}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      {/* Event Extra Tags */}
-                      {(selectedShow.desayuno || selectedShow.combo) && (
-                        <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-slate-200/70 dark:border-zinc-800">
-                          {selectedShow.desayuno && (
-                            <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
-                              ☕ Con Desayuno
-                            </span>
-                          )}
-                          {selectedShow.combo && (
-                            <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400">
-                              🍿 Con Combo
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
                   </div>
-
-                  {/* Visual Projection Timeline ("los horarios de todo") */}
-                  {selectedShow.isEvent ? (
-                    <div className="rounded-2xl p-4 bg-amber-500/10 dark:bg-amber-500/5 border border-amber-500/20 flex flex-col gap-2">
-                      <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-black text-xs uppercase tracking-wider">
-                        <Info className="w-4 h-4" />
-                        <span>Detalles del Evento Especial</span>
-                      </div>
-                      <div className="text-xs text-slate-700 dark:text-zinc-300 space-y-1">
-                        <div>• Horario: <strong className="text-slate-900 dark:text-zinc-100">{selectedShow.inicio} hs - {selectedShow.fin} hs</strong></div>
-                        <div>• Duración: <strong className="text-slate-900 dark:text-zinc-100">{getShowDuration(selectedShow)} minutos</strong></div>
-                        {selectedShow.desayuno && <div className="text-amber-600 dark:text-amber-400 font-bold">☕ Incluye Desayuno</div>}
-                        {selectedShow.combo && <div className="text-rose-600 dark:text-rose-400 font-bold">🍿 Incluye Combo</div>}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl p-4 bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800">
-                      <div className="flex items-center gap-2 mb-3.5">
-                        <Clock className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-                        <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-zinc-200">
-                          Cronograma de Proyección
-                        </span>
-                      </div>
-
-                      <div className="relative pl-6 space-y-3.5">
-                        {/* Step 1: Encendido / Publicidad */}
-                        <div className="relative">
-                          <div className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-rose-500 ring-4 ring-rose-500/20" />
-                          <div className="absolute -left-[19px] top-4.5 w-0.5 h-[calc(100%+8px)] bg-slate-200 dark:bg-zinc-800" />
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
-                              Encendido y Publicidad
-                            </span>
-                            <span className="text-xs font-black font-mono text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
-                              {selectedShow.inicio} hs
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                            15 minutos de tanda comercial previa
-                          </p>
-                        </div>
-
-                        {/* Step 2: Inicio de Película */}
-                        <div className="relative">
-                          <div className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-blue-500 ring-4 ring-blue-500/20" />
-                          <div className="absolute -left-[19px] top-4.5 w-0.5 h-[calc(100%+8px)] bg-slate-200 dark:bg-zinc-800" />
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
-                              Inicio de Película
-                            </span>
-                            <span className="text-xs font-black font-mono text-slate-800 dark:text-zinc-200 bg-slate-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700">
-                              {addMinutesToTimeStr(selectedShow.inicio, 15)} hs
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                            Apagado de sala · Nivel de proyección activo
-                          </p>
-                        </div>
-
-                        {/* Step 3: Luces en Créditos (if available) */}
-                        {selectedShow.creditosHoraReloj && (
-                          <div className="relative">
-                            <div className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-amber-500 ring-4 ring-amber-500/20" />
-                            <div className="absolute -left-[19px] top-4.5 w-0.5 h-[calc(100%+8px)] bg-slate-200 dark:bg-zinc-800" />
-                            <div className="flex items-baseline justify-between gap-2">
-                              <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
-                                Luces en Créditos
-                              </span>
-                              <span className="text-xs font-black font-mono text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
-                                {selectedShow.creditosHoraReloj} hs
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                              {selectedShow.horaCreditoOriginal
-                                ? `A las ${selectedShow.horaCreditoOriginal} de reproducción`
-                                : "Subida gradual de iluminación de sala"}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Step 4: Finalización de Función */}
-                        <div className="relative">
-                          <div className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" />
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
-                              Fin de Función
-                            </span>
-                            <span className="text-xs font-black font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                              {selectedShow.fin} hs
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                            Desalojo de público e ingreso de limpieza
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 3 Metrics Cards */}
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 text-center">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-zinc-500 block">
-                        Total Bloque
-                      </span>
-                      <span className="text-xs sm:text-sm font-black text-slate-800 dark:text-zinc-200 font-mono">
-                        {getShowDuration(selectedShow)} m
-                      </span>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 text-center">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-zinc-500 block">
-                        Película
-                      </span>
-                      <span className="text-xs sm:text-sm font-black text-slate-800 dark:text-zinc-200 font-mono">
-                        {selectedShow.runTime ? `${selectedShow.runTime} m` : `${Math.max(0, getShowDuration(selectedShow) - 15)} m`}
-                      </span>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 text-center">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-zinc-500 block">
-                        Publicidad
-                      </span>
-                      <span className="text-xs sm:text-sm font-black text-slate-800 dark:text-zinc-200 font-mono">
-                        15 m
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Cast & Crew (if available) */}
-                  {selectedShow.filmPersons && selectedShow.filmPersons.length > 0 && (
-                    <div className="rounded-2xl p-3 bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Users className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
-                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">
-                          Reparto y Dirección
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto custom-scrollbar">
-                        {selectedShow.filmPersons.map((p: any, idx: number) => (
-                          <span
-                            key={idx}
-                            className="px-2 py-0.5 rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-[10.5px] text-slate-600 dark:text-zinc-400"
-                          >
-                            <strong className="text-slate-800 dark:text-zinc-200">{p.firstName} {p.lastName}</strong> ({p.personType === "Actor" ? "Actor" : "Director"})
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
-                {/* Right Column: Live Seat Map ("el mapita de la ubicacion") */}
-                <div className="flex-1 min-w-0 flex flex-col gap-3">
-                  {selectedShow.isSimulated ? (
-                    <div className="w-full flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="relative flex h-2.5 w-2.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                {/* Visual Projection Timeline ("los horarios de todo") */}
+                {selectedShow.isEvent ? (
+                  <div className="rounded-2xl p-3 bg-amber-500/10 dark:bg-amber-500/5 border border-amber-500/20 flex flex-col gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-black text-xs uppercase tracking-wider">
+                      <Info className="w-3.5 h-3.5" />
+                      <span>Detalles del Evento Especial</span>
+                    </div>
+                    <div className="text-xs text-slate-700 dark:text-zinc-300 space-y-0.5">
+                      <div>• Horario: <strong className="text-slate-900 dark:text-zinc-100">{selectedShow.inicio} hs - {selectedShow.fin} hs</strong></div>
+                      <div>• Duración: <strong className="text-slate-900 dark:text-zinc-100">{getShowDuration(selectedShow)} minutos</strong></div>
+                      {selectedShow.desayuno && <div className="text-amber-600 dark:text-amber-400 font-bold">☕ Incluye Desayuno</div>}
+                      {selectedShow.combo && <div className="text-rose-600 dark:text-rose-400 font-bold">🍿 Incluye Combo</div>}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl p-3 bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 shrink-0">
+                    <div className="flex items-center gap-1.5 mb-2.5">
+                      <Clock className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-800 dark:text-zinc-200">
+                        Cronograma de Proyección
+                      </span>
+                    </div>
+
+                    <div className="relative pl-5 space-y-2.5">
+                      {/* Step 1: Encendido / Publicidad */}
+                      <div className="relative">
+                        <div className="absolute -left-5 top-1 w-2.5 h-2.5 rounded-full bg-rose-500 ring-3 ring-rose-500/20" />
+                        <div className="absolute -left-[16px] top-3.5 w-0.5 h-[calc(100%+6px)] bg-slate-200 dark:bg-zinc-800" />
+                        <div className="flex items-baseline justify-between gap-1.5">
+                          <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                            Encendido / Publicidad
                           </span>
-                          <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-zinc-200">
-                            Plano de Asientos en Vivo · Sala {selectedShow.sala}
+                          <span className="text-[11px] font-black font-mono text-rose-600 dark:text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded-md border border-rose-500/20">
+                            {selectedShow.inicio} hs
                           </span>
                         </div>
+                        <p className="text-[10.5px] text-slate-500 dark:text-zinc-400">
+                          15 min de tanda previa
+                        </p>
                       </div>
 
-                      {loadingSeatMap ? (
-                        <div className="flex flex-col items-center justify-center py-20 px-4 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
-                          <div className="w-8 h-8 border-3 border-rose-500 border-t-transparent rounded-full animate-spin mb-3" />
-                          <p className="text-xs font-bold text-slate-700 dark:text-zinc-300">
-                            Cargando plano en tiempo real...
-                          </p>
-                          <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">
-                            Consultando estado de butacas para Sala {selectedShow.sala}
-                          </p>
+                      {/* Step 2: Inicio de Película */}
+                      <div className="relative">
+                        <div className="absolute -left-5 top-1 w-2.5 h-2.5 rounded-full bg-blue-500 ring-3 ring-blue-500/20" />
+                        <div className="absolute -left-[16px] top-3.5 w-0.5 h-[calc(100%+6px)] bg-slate-200 dark:bg-zinc-800" />
+                        <div className="flex items-baseline justify-between gap-1.5">
+                          <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                            Inicio de Película
+                          </span>
+                          <span className="text-[11px] font-black font-mono text-slate-800 dark:text-zinc-200 bg-slate-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700">
+                            {addMinutesToTimeStr(selectedShow.inicio, 15)} hs
+                          </span>
                         </div>
-                      ) : seatMapError ? (
-                        <div className="flex flex-col items-center justify-center py-12 px-6 text-center rounded-2xl bg-amber-500/10 border border-amber-500/20">
-                          <AlertCircle className="w-8 h-8 text-amber-500 mb-2" />
-                          <h4 className="text-xs font-black text-amber-700 dark:text-amber-400">
-                            No se pudo cargar el mapa en vivo
-                          </h4>
-                          <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1 max-w-sm">
-                            {seatMapError}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => fetchSeatMap(selectedShow)}
-                            className="mt-3 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
-                          >
-                            Reintentar conexión
-                          </button>
-                        </div>
-                      ) : (seatMapData || (selectedShow && selectedShow.occupiedSeats && selectedShow.occupiedSeats.length > 0)) ? (
-                        renderSeatGrid(seatMapData)
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
-                          <Film className="w-8 h-8 text-slate-400 mb-2 opacity-50" />
-                          <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
-                            No hay información de butacas disponible para esta función.
+                        <p className="text-[10.5px] text-slate-500 dark:text-zinc-400">
+                          Apagado de sala activo
+                        </p>
+                      </div>
+
+                      {/* Step 3: Luces en Créditos */}
+                      {selectedShow.creditosHoraReloj && (
+                        <div className="relative">
+                          <div className="absolute -left-5 top-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-3 ring-amber-500/20" />
+                          <div className="absolute -left-[16px] top-3.5 w-0.5 h-[calc(100%+6px)] bg-slate-200 dark:bg-zinc-800" />
+                          <div className="flex items-baseline justify-between gap-1.5">
+                            <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                              Luces en Créditos
+                            </span>
+                            <span className="text-[11px] font-black font-mono text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md border border-amber-500/20">
+                              {selectedShow.creditosHoraReloj} hs
+                            </span>
+                          </div>
+                          <p className="text-[10.5px] text-slate-500 dark:text-zinc-400">
+                            {selectedShow.horaCreditoOriginal
+                              ? `A las ${selectedShow.horaCreditoOriginal} de film`
+                              : "Subida gradual de luces"}
                           </p>
                         </div>
                       )}
+
+                      {/* Step 4: Finalización de Función */}
+                      <div className="relative">
+                        <div className="absolute -left-5 top-1 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-3 ring-emerald-500/20" />
+                        <div className="flex items-baseline justify-between gap-1.5">
+                          <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                            Fin de Función
+                          </span>
+                          <span className="text-[11px] font-black font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md border border-emerald-500/20">
+                            {selectedShow.fin} hs
+                          </span>
+                        </div>
+                        <p className="text-[10.5px] text-slate-500 dark:text-zinc-400">
+                          Desalojo y limpieza
+                        </p>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-16 px-6 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
-                      <Info className="w-8 h-8 text-slate-400 mb-2 opacity-60" />
-                      <h4 className="text-xs font-black text-slate-700 dark:text-zinc-300">
-                        Función Manual / Sin API
-                      </h4>
-                      <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1 max-w-xs">
-                        Esta función fue configurada de forma manual, por lo que no posee integración de venta de butacas en tiempo real.
+                  </div>
+                )}
+
+                {/* 3 Metrics Cards */}
+                <div className="grid grid-cols-3 gap-1.5 shrink-0">
+                  <div className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 text-center">
+                    <span className="text-[9.5px] uppercase font-bold text-slate-400 dark:text-zinc-500 block">
+                      Bloque
+                    </span>
+                    <span className="text-xs sm:text-sm font-black text-slate-800 dark:text-zinc-200 font-mono">
+                      {getShowDuration(selectedShow)} m
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 text-center">
+                    <span className="text-[9.5px] uppercase font-bold text-slate-400 dark:text-zinc-500 block">
+                      Película
+                    </span>
+                    <span className="text-xs sm:text-sm font-black text-slate-800 dark:text-zinc-200 font-mono">
+                      {selectedShow.runTime ? `${selectedShow.runTime} m` : `${Math.max(0, getShowDuration(selectedShow) - 15)} m`}
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 text-center">
+                    <span className="text-[9.5px] uppercase font-bold text-slate-400 dark:text-zinc-500 block">
+                      Publicidad
+                    </span>
+                    <span className="text-xs sm:text-sm font-black text-slate-800 dark:text-zinc-200 font-mono">
+                      15 m
+                    </span>
+                  </div>
+                </div>
+
+                {/* Cast & Crew (if available) */}
+                {selectedShow.filmPersons && selectedShow.filmPersons.length > 0 && (
+                  <div className="rounded-2xl p-2.5 bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 shrink-0">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <Users className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
+                      <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">
+                        Reparto y Dirección
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto custom-scrollbar">
+                      {selectedShow.filmPersons.map((p: any, idx: number) => (
+                        <span
+                          key={idx}
+                          className="px-1.5 py-0.5 rounded-md bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-[10px] text-slate-600 dark:text-zinc-400"
+                        >
+                          <strong className="text-slate-800 dark:text-zinc-200">{p.firstName} {p.lastName}</strong> ({p.personType === "Actor" ? "Actor" : "Director"})
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Live Seat Map ("el mapita de la ubicacion") */}
+              <div className="flex-1 min-w-0 h-full flex flex-col min-h-0 overflow-hidden">
+                {selectedShow.isSimulated ? (
+                  loadingSeatMap ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center py-20 px-4 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
+                      <div className="w-8 h-8 border-3 border-rose-500 border-t-transparent rounded-full animate-spin mb-3" />
+                      <p className="text-xs font-bold text-slate-700 dark:text-zinc-300">
+                        Cargando plano en tiempo real...
+                      </p>
+                      <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">
+                        Consultando estado de butacas para Sala {selectedShow.sala}
                       </p>
                     </div>
-                  )}
-                </div>
+                  ) : seatMapError ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center py-12 px-6 text-center rounded-2xl bg-amber-500/10 border border-amber-500/20">
+                      <AlertCircle className="w-8 h-8 text-amber-500 mb-2" />
+                      <h4 className="text-xs font-black text-amber-700 dark:text-amber-400">
+                        No se pudo cargar el mapa en vivo
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1 max-w-sm">
+                        {seatMapError}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => fetchSeatMap(selectedShow)}
+                        className="mt-3 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                      >
+                        Reintentar conexión
+                      </button>
+                    </div>
+                  ) : (seatMapData || (selectedShow && selectedShow.occupiedSeats && selectedShow.occupiedSeats.length > 0)) ? (
+                    renderSeatGrid(seatMapData)
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
+                      <Film className="w-8 h-8 text-slate-400 mb-2 opacity-50" />
+                      <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
+                        No hay información de butacas disponible para esta función.
+                      </p>
+                    </div>
+                  )
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center py-16 px-6 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
+                    <Info className="w-8 h-8 text-slate-400 mb-2 opacity-60" />
+                    <h4 className="text-xs font-black text-slate-700 dark:text-zinc-300">
+                      Función Manual / Sin API
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1 max-w-xs">
+                      Esta función fue configurada de forma manual, por lo que no posee integración de venta de butacas en tiempo real.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-between px-5 sm:px-6 py-3.5 bg-slate-50/80 dark:bg-zinc-950/80 border-t border-slate-200/80 dark:border-zinc-800 shrink-0">
+            <div className="flex items-center justify-between px-5 sm:px-6 py-2.5 bg-slate-50/80 dark:bg-zinc-950/80 border-t border-slate-200/80 dark:border-zinc-800 shrink-0">
               <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
                 <Sparkles className="w-3.5 h-3.5 text-rose-500" />
                 <span>Presione <kbd className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-zinc-800 text-[10px] font-mono font-bold text-slate-700 dark:text-zinc-300">Esc</kbd> para cerrar</span>
@@ -4031,7 +4029,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               <button
                 type="button"
                 onClick={handleCloseModal}
-                className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-xs"
+                className="px-5 py-1.5 sm:py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-xs"
               >
                 Cerrar
               </button>
