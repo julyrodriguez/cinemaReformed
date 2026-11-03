@@ -27,6 +27,15 @@ import {
   Calendar,
   Clock,
   Sparkles,
+  X,
+  Film,
+  Users,
+  Clapperboard,
+  Ticket,
+  AlertCircle,
+  CheckCircle2,
+  Play,
+  Lightbulb,
 } from "lucide-react";
 import { doc, onSnapshot, getDoc, collection } from "@/lib/dbService";
 import { db, CINES_COLLECTION, functions } from "../../lib/firebaseConfig";
@@ -391,6 +400,24 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     return () => unsubscribe();
   }, [cineId, selectedShow]);
 
+  const handleCloseModal = () => {
+    setSelectedShow(null);
+    setShowSeatMap(false);
+    setSeatMapData(null);
+    setSeatMapError(null);
+  };
+
+  useEffect(() => {
+    if (!selectedShow) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleCloseModal();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedShow]);
+
   useEffect(() => {
     if (selectedShow && selectedShow.isSimulated) {
       fetchSeatMap(selectedShow);
@@ -462,10 +489,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const layout = activeSalaLayout;
     if (!layout) {
       return (
-        <View style={{ padding: 20, alignItems: "center" }}>
-          <ActivityIndicator size="small" color={COLORS.primary} />
-          <Text style={{ color: COLORS.textSoft, marginTop: 8 }}>Cargando plano de la sala...</Text>
-        </View>
+        <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+          <div className="w-8 h-8 border-3 border-rose-500 border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">Cargando plano de la sala...</p>
+        </div>
       );
     }
 
@@ -488,113 +515,210 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       });
     }
 
+    // Calculate room occupancy statistics
+    let totalPhysicalSeats = 0;
+    let soldSeatsCount = 0;
+    let dboxCount = 0;
+
+    layout.rows.forEach((rowName) => {
+      const rowSeats = layout.seats[rowName];
+      if (!rowSeats) return;
+      rowSeats.forEach((seat) => {
+        if (seat.type === "seat") {
+          totalPhysicalSeats++;
+          if (seat.isDbox) dboxCount++;
+          const apiSeat = occupiedMap.get(`${seat.row}-${seat.number}`);
+          if (apiSeat && apiSeat.seatStatus !== 0) {
+            soldSeatsCount++;
+          }
+        }
+      });
+    });
+
+    const freeSeatsCount = Math.max(0, totalPhysicalSeats - soldSeatsCount);
+    const occupancyPct = totalPhysicalSeats > 0 ? Math.round((soldSeatsCount / totalPhysicalSeats) * 100) : 0;
+
     return (
-      <View style={styles.seatGridContainer}>
-        {/* Screen Indicator */}
-        <View style={styles.screenIndicator}>
-          <View style={styles.screenLine} />
-          <Text style={styles.screenText}>PANTALLA</Text>
-        </View>
+      <div className="w-full flex flex-col gap-3">
+        {/* Occupancy Summary Card */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-100/90 dark:bg-zinc-800/60 border border-slate-200/80 dark:border-zinc-700/60">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs border ${
+              occupancyPct >= 80 
+                ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20" 
+                : occupancyPct >= 40 
+                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" 
+                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+            }`}>
+              {occupancyPct}%
+            </div>
+            <div>
+              <div className="text-xs font-black text-slate-800 dark:text-zinc-200">
+                {soldSeatsCount} de {totalPhysicalSeats} butacas vendidas
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-zinc-400">
+                {freeSeatsCount} disponibles para esta función
+              </div>
+            </div>
+          </div>
+          {/* Progress Bar */}
+          <div className="w-full sm:w-48 flex flex-col gap-1">
+            <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-zinc-700 overflow-hidden">
+              <div 
+                className={`h-full rounded-full transition-all duration-500 ${
+                  occupancyPct >= 80 ? "bg-rose-500" : occupancyPct >= 40 ? "bg-amber-500" : "bg-emerald-500"
+                }`}
+                style={{ width: `${Math.min(100, occupancyPct)}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[10px] font-semibold text-slate-400 dark:text-zinc-500">
+              <span>0%</span>
+              <span className="font-bold text-slate-700 dark:text-zinc-300">{occupancyPct}% ocupación</span>
+              <span>100%</span>
+            </div>
+          </div>
+        </div>
 
-        <ScrollView 
-          horizontal={true} 
-          showsHorizontalScrollIndicator={true}
-          bounces={true}
-          contentContainerStyle={styles.horizontalGridScroll}
-          style={{ alignSelf: "stretch" }}
-        >
-          <View style={{ flexDirection: "column" }}>
-            {layout.rows.map((rowName) => {
-              const rowSeats = layout.seats[rowName];
-              if (!rowSeats) return null;
+        {/* Legend */}
+        <div className="flex flex-wrap items-center justify-center gap-2 py-1 text-[11px] font-bold text-slate-600 dark:text-zinc-300">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200/70 dark:border-zinc-700/60 shadow-2xs">
+            <span className="w-3 h-3 rounded-sm bg-emerald-500" />
+            <span>Disponible ({freeSeatsCount})</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200/70 dark:border-zinc-700/60 shadow-2xs">
+            <span className="w-3 h-3 rounded-sm bg-rose-500" />
+            <span>Ocupado ({soldSeatsCount})</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200/70 dark:border-zinc-700/60 shadow-2xs">
+            <span className="w-3 h-3 rounded-sm bg-amber-500" />
+            <span>Mío / Bloq.</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200/70 dark:border-zinc-700/60 shadow-2xs">
+            <span className="w-3 h-3 rounded-sm bg-blue-600 flex items-center justify-center text-[8px] text-white font-bold">♿</span>
+            <span>Accesibilidad</span>
+          </div>
+          {dboxCount > 0 && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200/70 dark:border-zinc-700/60 shadow-2xs">
+              <span className="w-3 h-3 rounded-sm bg-slate-700 ring-2 ring-amber-400" />
+              <span>D-BOX ({dboxCount})</span>
+            </div>
+          )}
+        </div>
 
-              // Slice row seats dynamically based on aisles definition
-              const sections: SeatInfo[][] = [];
-              let prev = 0;
-              layout.aisles.forEach((aisleIndex) => {
-                sections.push(rowSeats.slice(prev, aisleIndex));
-                prev = aisleIndex;
-              });
-              sections.push(rowSeats.slice(prev, layout.maxCol));
+        {/* Seat Grid Cinema Canvas */}
+        <div className="w-full rounded-2xl bg-slate-950 p-4 sm:p-5 border border-slate-800/90 shadow-inner flex flex-col items-center overflow-hidden">
+          {/* Curved Screen Graphic */}
+          <div className="relative w-full max-w-sm mx-auto flex flex-col items-center mb-6">
+            <div className="w-4/5 h-3 border-t-[3px] border-rose-500/80 rounded-[50%] shadow-[0_-6px_16px_rgba(244,63,94,0.45)]" />
+            <span className="text-[10px] font-black tracking-[0.25em] text-slate-400 uppercase mt-1">
+              PANTALLA
+            </span>
+            <div className="w-full h-6 bg-gradient-to-b from-rose-500/10 via-rose-500/5 to-transparent blur-sm -mt-1 pointer-events-none" />
+          </div>
 
-              return (
-                <React.Fragment key={rowName}>
-                  <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 3 }}>
-                    {/* Left row letter */}
-                    <Text style={styles.rowLabelText}>{rowName}</Text>
+          {/* Scrollable Layout */}
+          <div className="w-full overflow-x-auto pb-4 custom-scrollbar">
+            <div className="mx-auto flex flex-col items-center gap-1.5 w-max px-4">
+              {layout.rows.map((rowName) => {
+                const rowSeats = layout.seats[rowName];
+                if (!rowSeats) return null;
 
-                    {/* Render sections separated by aisles */}
-                    {sections.map((section, idx) => (
-                      <React.Fragment key={idx}>
-                        {idx > 0 && <View style={styles.aisleSpace} />}
-                        <View style={{ flexDirection: "row" }}>
-                          {section.map((seat) => {
-                            if (seat.type === "empty") {
-                              return <View key={`empty-${seat.row}-${seat.colIndex}`} style={styles.seatSpacer} />;
-                            }
+                // Slice row seats dynamically based on aisles definition
+                const sections: SeatInfo[][] = [];
+                let prev = 0;
+                layout.aisles.forEach((aisleIndex) => {
+                  sections.push(rowSeats.slice(prev, aisleIndex));
+                  prev = aisleIndex;
+                });
+                sections.push(rowSeats.slice(prev, layout.maxCol));
 
-                            const seatKey = `${seat.row}-${seat.number}`;
-                            const stableKey = `${seat.row}-${seat.colIndex}`;
-                            const apiSeat = occupiedMap.get(seatKey);
-                            const isSold = apiSeat ? apiSeat.seatStatus !== 0 : false;
-                            
-                            let seatStyle = styles.seatAvailable;
-                            let iconName = "";
+                return (
+                  <React.Fragment key={rowName}>
+                    <div className="flex items-center gap-1.5">
+                      {/* Left row letter badge */}
+                      <span className="w-6 h-6 rounded-md bg-slate-800 text-slate-300 font-black text-[11px] flex items-center justify-center shrink-0 shadow-xs border border-slate-700/60">
+                        {rowName}
+                      </span>
 
-                            if (isSold) {
-                              const status = apiSeat.seatStatus;
-                              if (status === 1 || status === 6 || status === 7) {
-                                seatStyle = styles.seatOccupied;
-                              } else if (status === 4) {
-                                seatStyle = styles.seatWheelchair;
-                                iconName = "wheelchair-accessibility";
-                              } else if (status === 5) {
-                                seatStyle = styles.seatAutoAssigned;
-                              } else if (status === 8) {
-                                seatStyle = styles.seatBlocked;
-                              } else {
-                                seatStyle = styles.seatOccupied; // default fallback if sold
-                              }
-                            }
-
-                            // D-BOX border highlight
-                            const isDbox = seat.isDbox;
-
-                            return (
-                              <View 
-                                key={stableKey} 
-                                style={[
-                                  styles.seatBase, 
-                                  seatStyle,
-                                  isDbox && styles.seatDboxBorder
-                                ]}
-                              >
-                                {iconName ? (
-                                  <MaterialCommunityIcons 
-                                    name={iconName as any} 
-                                    size={Platform.select({ web: 13, default: 10 })} 
-                                    color="#FFF" 
+                      {/* Sections separated by aisles */}
+                      {sections.map((section, idx) => (
+                        <React.Fragment key={idx}>
+                          {idx > 0 && <div className="w-5 sm:w-6 shrink-0" />}
+                          <div className="flex items-center gap-1">
+                            {section.map((seat) => {
+                              if (seat.type === "empty") {
+                                return (
+                                  <div
+                                    key={`empty-${seat.row}-${seat.colIndex}`}
+                                    className="w-5 h-5 sm:w-6 sm:h-6 shrink-0"
                                   />
-                                ) : (
-                                  <Text style={styles.seatNumberText}>{seat.number}</Text>
-                                )}
-                              </View>
-                            );
-                          })}
-                        </View>
-                      </React.Fragment>
-                    ))}
+                                );
+                              }
 
-                    {/* Right row letter */}
-                    <Text style={[styles.rowLabelText, { marginLeft: 8 }]}>{rowName}</Text>
-                  </View>
-                  {layout.rowAisles?.includes(rowName) && <View style={{ height: 14 }} />}
-                </React.Fragment>
-              );
-            })}
-          </View>
-        </ScrollView>
-      </View>
+                              const seatKey = `${seat.row}-${seat.number}`;
+                              const stableKey = `${seat.row}-${seat.colIndex}`;
+                              const apiSeat = occupiedMap.get(seatKey);
+                              const isSold = apiSeat ? apiSeat.seatStatus !== 0 : false;
+
+                              let seatBg = "bg-emerald-500 text-white hover:bg-emerald-400";
+                              let seatLabel = "Disponible";
+                              let isWheelchair = false;
+
+                              if (isSold) {
+                                const status = apiSeat.seatStatus;
+                                if (status === 1 || status === 6 || status === 7) {
+                                  seatBg = "bg-rose-500/90 text-white hover:bg-rose-500";
+                                  seatLabel = "Ocupada";
+                                } else if (status === 4) {
+                                  seatBg = "bg-blue-600 text-white hover:bg-blue-500";
+                                  seatLabel = "Accesibilidad";
+                                  isWheelchair = true;
+                                } else if (status === 5) {
+                                  seatBg = "bg-amber-500 text-white hover:bg-amber-400";
+                                  seatLabel = "Asignada";
+                                } else if (status === 8) {
+                                  seatBg = "bg-slate-600 text-slate-300";
+                                  seatLabel = "Bloqueada";
+                                } else {
+                                  seatBg = "bg-rose-500/90 text-white";
+                                  seatLabel = "Ocupada";
+                                }
+                              }
+
+                              const isDbox = seat.isDbox;
+                              const titleTooltip = `Fila ${seat.row} Butaca ${seat.number}: ${seatLabel}${isDbox ? ' · D-BOX' : ''}`;
+
+                              return (
+                                <div
+                                  key={stableKey}
+                                  title={titleTooltip}
+                                  className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md shrink-0 flex items-center justify-center font-bold text-[9px] sm:text-[10px] cursor-default transition-all duration-150 select-none ${seatBg} ${
+                                    isDbox ? "ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-950" : ""
+                                  }`}
+                                >
+                                  {isWheelchair ? "♿" : seat.number}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </React.Fragment>
+                      ))}
+
+                      {/* Right row letter badge */}
+                      <span className="w-6 h-6 rounded-md bg-slate-800 text-slate-300 font-black text-[11px] flex items-center justify-center shrink-0 shadow-xs border border-slate-700/60 ml-1">
+                        {rowName}
+                      </span>
+                    </div>
+
+                    {/* Horizontal row aisle */}
+                    {layout.rowAisles?.includes(rowName) && <div className="h-3 w-full" />}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -3571,226 +3695,350 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     </ScrollView>
   </View>
 
-      {/* Show Details Modal */}
-      <Modal
-        visible={selectedShow !== null}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }}
-      >
-        <View style={[styles.modalOverlay, isMobile && styles.modalOverlayFullScreen]}>
-          <View style={[
-            styles.modalContent,
-            isMobile ? styles.modalContentFullScreen : (selectedShow?.isSimulated ? styles.modalContentLarge : {}),
-            isMobile && { maxHeight: windowHeight - 40 }
-          ]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalHeaderTitle}>Detalle de Función</Text>
-              <TouchableOpacity onPress={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }} style={styles.modalCloseButton}>
-                <MaterialCommunityIcons name="close" size={24} color={COLORS.text} />
-              </TouchableOpacity>
-            </View>
-
-            {selectedShow && (
-              <ScrollView 
-                style={{ maxHeight: isMobile ? windowHeight - 150 : windowHeight - 200 }} 
-                contentContainerStyle={[styles.modalBody, isMobile && { paddingHorizontal: 0, paddingBottom: 8 }]}
-                showsVerticalScrollIndicator={false}
+      {/* Modern Show Details Dialog */}
+      {selectedShow && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCloseModal();
+            }
+          }}
+        >
+          <div className="relative w-full max-w-5xl max-h-[92vh] flex flex-col rounded-3xl bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-100 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center border border-rose-500/20 shadow-2xs">
+                  <Clapperboard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-zinc-100 tracking-tight">
+                    Detalle de Función
+                  </h3>
+                  <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
+                    Sala {selectedShow.sala} · {selectedShow.inicio} a {selectedShow.fin} hs
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseModal}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                title="Cerrar (Esc)"
               >
-                <View style={{ flexDirection: isMobile ? "column" : "row", gap: 24, width: "100%" }}>
-                  {/* Columna Izquierda: Poster y Detalles */}
-                  <View style={{ flex: isMobile ? undefined : 1, minWidth: isMobile ? "100%" : 320 }}>
-                    {/* Fila del Poster y Cabecera */}
-                    <View style={{ flexDirection: "row", gap: 14, marginBottom: 20 }}>
-                      {selectedShow.posterUrl ? (
-                        <Image 
-                          source={{ uri: selectedShow.posterUrl }} 
-                          style={{ width: 100, height: 150, borderRadius: 8, backgroundColor: COLORS.bg }}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <View style={{ width: 100, height: 150, borderRadius: 8, backgroundColor: COLORS.border, justifyContent: "center", alignItems: "center" }}>
-                          <MaterialCommunityIcons name="movie-roll" size={40} color={COLORS.muted} />
-                        </View>
-                      )}
-                      <View style={{ flex: 1, justifyContent: "center", gap: 6 }}>
-                        <Text style={[styles.modalMovieTitle, { fontSize: 20, lineHeight: 26, marginVertical: 0 }]} numberOfLines={3}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable Body */}
+            <div className="overflow-y-auto p-4 sm:p-6 flex-1 custom-scrollbar">
+              <div className="flex flex-col lg:flex-row gap-6 w-full">
+                {/* Left Column: Movie Hero & Visual Projection Schedule */}
+                <div className="w-full lg:w-[410px] shrink-0 flex flex-col gap-4">
+                  {/* Poster & Main Info Card */}
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 flex gap-4">
+                    {selectedShow.posterUrl ? (
+                      <img
+                        src={selectedShow.posterUrl}
+                        alt={selectedShow.pelicula}
+                        className="w-24 sm:w-28 h-36 sm:h-40 object-cover rounded-2xl shadow-md border border-slate-200/80 dark:border-zinc-800 shrink-0 bg-slate-200 dark:bg-zinc-800"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div className="w-24 sm:w-28 h-36 sm:h-40 rounded-2xl bg-slate-200/60 dark:bg-zinc-800/80 border border-slate-200/80 dark:border-zinc-800 flex flex-col items-center justify-center text-slate-400 shrink-0 shadow-inner">
+                        <Film className="w-8 h-8 mb-1 opacity-50" />
+                        <span className="text-[10px] font-bold">Sin Póster</span>
+                      </div>
+                    )}
+
+                    <div className="flex-1 flex flex-col justify-between py-0.5 min-w-0">
+                      <div>
+                        <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-zinc-100 leading-tight line-clamp-2">
                           {selectedShow.pelicula}
-                        </Text>
-                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                          <View style={{ backgroundColor: COLORS.primarySoft, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                            <Text style={{ color: COLORS.primary, fontWeight: "bold", fontSize: 12 }}>Sala {selectedShow.sala}</Text>
-                          </View>
+                        </h4>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                          <span className="px-2.5 py-1 rounded-lg bg-rose-600 text-white text-xs font-black shadow-2xs">
+                            Sala {selectedShow.sala}
+                          </span>
                           {selectedShow.isEvent && (
-                            <View style={{ backgroundColor: COLORS.betaBadgeBg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                              <Text style={{ color: COLORS.betaText, fontWeight: "bold", fontSize: 12 }}>Evento Especial</Text>
-                            </View>
+                            <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/25 text-[11px] font-bold">
+                              Evento Especial
+                            </span>
                           )}
                           {selectedShow.sessionFormat && (
-                            <View style={{ backgroundColor: COLORS.border, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                              <Text style={{ color: COLORS.textSoft, fontSize: 11, fontWeight: "600" }}>{selectedShow.sessionFormat}</Text>
-                            </View>
+                            <span className="px-2 py-0.5 rounded-lg bg-slate-200/80 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-300/80 dark:border-zinc-700 text-[11px] font-bold">
+                              {selectedShow.sessionFormat}
+                            </span>
                           )}
                           {selectedShow.language && (
-                            <View style={{ backgroundColor: COLORS.border, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                              <Text style={{ color: COLORS.textSoft, fontSize: 11, fontWeight: "600" }}>{selectedShow.language}</Text>
-                            </View>
+                            <span className="px-2 py-0.5 rounded-lg bg-slate-200/80 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-300/80 dark:border-zinc-700 text-[11px] font-bold">
+                              {selectedShow.language}
+                            </span>
                           )}
-                        </View>
-                      </View>
-                    </View>
+                          {selectedShow.calificacion ? (
+                            <span className="px-2 py-0.5 rounded-lg bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/25 text-[11px] font-bold">
+                              {selectedShow.calificacion}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
 
-                    {/* Resto de Detalles en una lista limpia */}
-                    <View style={{ gap: 14 }}>
-                      {selectedShow.isEvent ? (
-                        <View style={styles.detailRow}>
-                          <MaterialCommunityIcons name="information-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.detailLabel}>Detalles del Evento</Text>
-                            <Text style={styles.detailValue}>
-                              • Horario: <Text style={styles.detailHighlight}>{selectedShow.inicio} hs - {selectedShow.fin} hs</Text>{"\n"}
-                              • Duración: <Text style={styles.detailHighlight}>{getShowDuration(selectedShow)} minutos</Text>{"\n"}
-                              {selectedShow.desayuno ? "☕ Incluye Desayuno\n" : ""}
-                              {selectedShow.combo ? "🍿 Incluye Combo\n" : ""}
-                            </Text>
-                          </View>
-                        </View>
-                      ) : (
-                        <>
-                          {/* Cronograma de Proyección */}
-                          <View style={styles.detailRow}>
-                            <MaterialCommunityIcons name="projector" size={22} color={COLORS.muted} style={styles.detailIcon} />
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.detailLabel}>Cronograma de Proyección</Text>
-                              <Text style={styles.detailValueSub}>
-                                • Encendido / Publicidad (15 min): <Text style={styles.detailHighlight}>{selectedShow.inicio} hs</Text>
-                              </Text>
-                              <Text style={styles.detailValueSub}>
-                                • Inicio de Película: <Text style={styles.detailHighlight}>{addMinutesToTimeStr(selectedShow.inicio, 15)} hs</Text>
-                              </Text>
-                              {selectedShow.creditosHoraReloj ? (
-                                <Text style={styles.detailValueSub}>
-                                  • Inicio de Créditos: <Text style={[styles.detailHighlight, { color: "#D97706" }]}>{selectedShow.creditosHoraReloj} hs</Text>
-                                  {selectedShow.horaCreditoOriginal ? ` (a las ${selectedShow.horaCreditoOriginal} de peli)` : ""}
-                                </Text>
-                              ) : null}
-                              <Text style={styles.detailValueSub}>
-                                • Finalización de Función: <Text style={styles.detailHighlight}>{selectedShow.fin} hs</Text>
-                              </Text>
-                            </View>
-                          </View>
-
-                          {/* Duración del Bloque */}
-                          <View style={styles.detailRow}>
-                            <MaterialCommunityIcons name="timer-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.detailLabel}>Duración Total del Bloque</Text>
-                              <Text style={styles.detailValue}>
-                                {getShowDuration(selectedShow)} minutos (incluye publicidad)
-                                {selectedShow.runTime ? `\n(Película: ${selectedShow.runTime} min)` : ""}
-                              </Text>
-                            </View>
-                          </View>
-                        </>
+                      {/* Event Extra Tags */}
+                      {(selectedShow.desayuno || selectedShow.combo) && (
+                        <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-slate-200/70 dark:border-zinc-800">
+                          {selectedShow.desayuno && (
+                            <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
+                              ☕ Con Desayuno
+                            </span>
+                          )}
+                          {selectedShow.combo && (
+                            <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                              🍿 Con Combo
+                            </span>
+                          )}
+                        </div>
                       )}
+                    </div>
+                  </div>
 
-                      {/* Calificación */}
-                      {selectedShow.calificacion ? (
-                        <View style={styles.detailRow}>
-                          <MaterialCommunityIcons name="account-alert-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.detailLabel}>Calificación</Text>
-                            <Text style={styles.detailValue}>{selectedShow.calificacion}</Text>
-                          </View>
-                        </View>
-                      ) : null}
+                  {/* Visual Projection Timeline ("los horarios de todo") */}
+                  {selectedShow.isEvent ? (
+                    <div className="rounded-2xl p-4 bg-amber-500/10 dark:bg-amber-500/5 border border-amber-500/20 flex flex-col gap-2">
+                      <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-black text-xs uppercase tracking-wider">
+                        <Info className="w-4 h-4" />
+                        <span>Detalles del Evento Especial</span>
+                      </div>
+                      <div className="text-xs text-slate-700 dark:text-zinc-300 space-y-1">
+                        <div>• Horario: <strong className="text-slate-900 dark:text-zinc-100">{selectedShow.inicio} hs - {selectedShow.fin} hs</strong></div>
+                        <div>• Duración: <strong className="text-slate-900 dark:text-zinc-100">{getShowDuration(selectedShow)} minutos</strong></div>
+                        {selectedShow.desayuno && <div className="text-amber-600 dark:text-amber-400 font-bold">☕ Incluye Desayuno</div>}
+                        {selectedShow.combo && <div className="text-rose-600 dark:text-rose-400 font-bold">🍿 Incluye Combo</div>}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl p-4 bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800">
+                      <div className="flex items-center gap-2 mb-3.5">
+                        <Clock className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-zinc-200">
+                          Cronograma de Proyección
+                        </span>
+                      </div>
 
-                      {/* Reparto y Dirección */}
-                      {selectedShow.filmPersons && selectedShow.filmPersons.length > 0 ? (
-                        <View style={styles.detailRow}>
-                          <MaterialCommunityIcons name="account-group-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.detailLabel}>Reparto y Dirección</Text>
-                            <Text style={[styles.detailValue, { fontSize: 13, lineHeight: 18, color: COLORS.textSoft }]}>
-                              {selectedShow.filmPersons
-                                .map((p: any) => `${p.firstName} ${p.lastName} (${p.personType === "Actor" ? "Actor" : "Director"})`)
-                                .join(", ")}
-                            </Text>
-                          </View>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
+                      <div className="relative pl-6 space-y-3.5">
+                        {/* Step 1: Encendido / Publicidad */}
+                        <div className="relative">
+                          <div className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-rose-500 ring-4 ring-rose-500/20" />
+                          <div className="absolute -left-[19px] top-4.5 w-0.5 h-[calc(100%+8px)] bg-slate-200 dark:bg-zinc-800" />
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                              Encendido y Publicidad
+                            </span>
+                            <span className="text-xs font-black font-mono text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
+                              {selectedShow.inicio} hs
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                            15 minutos de tanda comercial previa
+                          </p>
+                        </div>
 
-                  {/* Columna Derecha: Mapa de Asientos (solo si es simulada) */}
-                  {selectedShow.isSimulated && (
-                    <View style={{ 
-                      flex: isMobile ? undefined : 1.7, 
-                      minWidth: isMobile ? "100%" : 360,
-                      borderLeftWidth: isMobile ? 0 : 1, 
-                      borderLeftColor: COLORS.border, 
-                      paddingLeft: isMobile ? 0 : 24, 
-                      paddingTop: isMobile ? 20 : 0,
-                      borderTopWidth: isMobile ? 1 : 0,
-                      borderTopColor: isMobile ? COLORS.border : "transparent",
-                    }}>
-                      <Text style={[styles.detailLabel, { marginBottom: 12, fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5 }]}>
-                        Mapa de Asientos en Vivo
-                      </Text>
+                        {/* Step 2: Inicio de Película */}
+                        <div className="relative">
+                          <div className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-blue-500 ring-4 ring-blue-500/20" />
+                          <div className="absolute -left-[19px] top-4.5 w-0.5 h-[calc(100%+8px)] bg-slate-200 dark:bg-zinc-800" />
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                              Inicio de Película
+                            </span>
+                            <span className="text-xs font-black font-mono text-slate-800 dark:text-zinc-200 bg-slate-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700">
+                              {addMinutesToTimeStr(selectedShow.inicio, 15)} hs
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                            Apagado de sala · Nivel de proyección activo
+                          </p>
+                        </div>
+
+                        {/* Step 3: Luces en Créditos (if available) */}
+                        {selectedShow.creditosHoraReloj && (
+                          <div className="relative">
+                            <div className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-amber-500 ring-4 ring-amber-500/20" />
+                            <div className="absolute -left-[19px] top-4.5 w-0.5 h-[calc(100%+8px)] bg-slate-200 dark:bg-zinc-800" />
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                                Luces en Créditos
+                              </span>
+                              <span className="text-xs font-black font-mono text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                                {selectedShow.creditosHoraReloj} hs
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                              {selectedShow.horaCreditoOriginal
+                                ? `A las ${selectedShow.horaCreditoOriginal} de reproducción`
+                                : "Subida gradual de iluminación de sala"}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Step 4: Finalización de Función */}
+                        <div className="relative">
+                          <div className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" />
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                              Fin de Función
+                            </span>
+                            <span className="text-xs font-black font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                              {selectedShow.fin} hs
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                            Desalojo de público e ingreso de limpieza
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3 Metrics Cards */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 text-center">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-zinc-500 block">
+                        Total Bloque
+                      </span>
+                      <span className="text-xs sm:text-sm font-black text-slate-800 dark:text-zinc-200 font-mono">
+                        {getShowDuration(selectedShow)} m
+                      </span>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 text-center">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-zinc-500 block">
+                        Película
+                      </span>
+                      <span className="text-xs sm:text-sm font-black text-slate-800 dark:text-zinc-200 font-mono">
+                        {selectedShow.runTime ? `${selectedShow.runTime} m` : `${Math.max(0, getShowDuration(selectedShow) - 15)} m`}
+                      </span>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 text-center">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-zinc-500 block">
+                        Publicidad
+                      </span>
+                      <span className="text-xs sm:text-sm font-black text-slate-800 dark:text-zinc-200 font-mono">
+                        15 m
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Cast & Crew (if available) */}
+                  {selectedShow.filmPersons && selectedShow.filmPersons.length > 0 && (
+                    <div className="rounded-2xl p-3 bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Users className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">
+                          Reparto y Dirección
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto custom-scrollbar">
+                        {selectedShow.filmPersons.map((p: any, idx: number) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-0.5 rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-[10.5px] text-slate-600 dark:text-zinc-400"
+                          >
+                            <strong className="text-slate-800 dark:text-zinc-200">{p.firstName} {p.lastName}</strong> ({p.personType === "Actor" ? "Actor" : "Director"})
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Column: Live Seat Map ("el mapita de la ubicacion") */}
+                <div className="flex-1 min-w-0 flex flex-col gap-3">
+                  {selectedShow.isSimulated ? (
+                    <div className="w-full flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="relative flex h-2.5 w-2.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                          </span>
+                          <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-zinc-200">
+                            Plano de Asientos en Vivo · Sala {selectedShow.sala}
+                          </span>
+                        </div>
+                      </div>
 
                       {loadingSeatMap ? (
-                        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", minHeight: 200, paddingVertical: 40 }}>
-                          <ActivityIndicator size="large" color={COLORS.primary} />
-                          <Text style={{ color: COLORS.textSoft, marginTop: 12, fontSize: 13 }}>Cargando mapa de asientos...</Text>
-                        </View>
+                        <div className="flex flex-col items-center justify-center py-20 px-4 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
+                          <div className="w-8 h-8 border-3 border-rose-500 border-t-transparent rounded-full animate-spin mb-3" />
+                          <p className="text-xs font-bold text-slate-700 dark:text-zinc-300">
+                            Cargando plano en tiempo real...
+                          </p>
+                          <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">
+                            Consultando estado de butacas para Sala {selectedShow.sala}
+                          </p>
+                        </div>
                       ) : seatMapError ? (
-                        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", minHeight: 200, paddingVertical: 30 }}>
-                          <MaterialCommunityIcons name="alert-circle-outline" size={36} color="#EF4444" />
-                          <Text style={{ color: "#EF4444", fontWeight: "bold", marginTop: 8, fontSize: 14 }}>Error al cargar mapa</Text>
-                          <Text style={{ color: COLORS.textSoft, textAlign: "center", marginTop: 4, paddingHorizontal: 16, fontSize: 12 }}>{seatMapError}</Text>
-                        </View>
+                        <div className="flex flex-col items-center justify-center py-12 px-6 text-center rounded-2xl bg-amber-500/10 border border-amber-500/20">
+                          <AlertCircle className="w-8 h-8 text-amber-500 mb-2" />
+                          <h4 className="text-xs font-black text-amber-700 dark:text-amber-400">
+                            No se pudo cargar el mapa en vivo
+                          </h4>
+                          <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1 max-w-sm">
+                            {seatMapError}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => fetchSeatMap(selectedShow)}
+                            className="mt-3 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                          >
+                            Reintentar conexión
+                          </button>
+                        </div>
                       ) : (seatMapData || (selectedShow && selectedShow.occupiedSeats && selectedShow.occupiedSeats.length > 0)) ? (
-                        <View style={{ alignItems: "center", width: "100%" }}>
-                          <View style={[styles.legendContainer, { marginBottom: 16 }]}>
-                            <View style={styles.legendItem}>
-                              <View style={[styles.seatBase, styles.seatAvailable]} />
-                              <Text style={styles.legendText}>Disp.</Text>
-                            </View>
-                            <View style={styles.legendItem}>
-                              <View style={[styles.seatBase, styles.seatOccupied]} />
-                              <Text style={styles.legendText}>Ocup.</Text>
-                            </View>
-                            <View style={styles.legendItem}>
-                              <View style={[styles.seatBase, styles.seatAutoAssigned]} />
-                              <Text style={styles.legendText}>Mío</Text>
-                            </View>
-                            <View style={styles.legendItem}>
-                              <View style={[styles.seatBase, styles.seatWheelchair, { justifyContent: 'center', alignItems: 'center' }]}>
-                                <MaterialCommunityIcons name="wheelchair-accessibility" size={10} color="#FFF" />
-                              </View>
-                              <Text style={styles.legendText}>Silla</Text>
-                            </View>
-                          </View>
-
-                          {renderSeatGrid(seatMapData)}
-                        </View>
+                        renderSeatGrid(seatMapData)
                       ) : (
-                        <Text style={{ color: COLORS.textSoft, fontSize: 13, fontStyle: "italic", textAlign: "center", paddingVertical: 40 }}>
-                          No hay mapa de asientos disponible.
-                        </Text>
+                        <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
+                          <Film className="w-8 h-8 text-slate-400 mb-2 opacity-50" />
+                          <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
+                            No hay información de butacas disponible para esta función.
+                          </p>
+                        </div>
                       )}
-                    </View>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-16 px-6 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
+                      <Info className="w-8 h-8 text-slate-400 mb-2 opacity-60" />
+                      <h4 className="text-xs font-black text-slate-700 dark:text-zinc-300">
+                        Función Manual / Sin API
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1 max-w-xs">
+                        Esta función fue configurada de forma manual, por lo que no posee integración de venta de butacas en tiempo real.
+                      </p>
+                    </div>
                   )}
-                </View>
-              </ScrollView>
-            )}
+                </div>
+              </div>
+            </div>
 
-            <TouchableOpacity onPress={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }} style={styles.modalButton}>
-              <Text style={styles.modalButtonText}>Cerrar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+            {/* Footer */}
+            <div className="flex items-center justify-between px-5 sm:px-6 py-3.5 bg-slate-50/80 dark:bg-zinc-950/80 border-t border-slate-200/80 dark:border-zinc-800 shrink-0">
+              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
+                <Sparkles className="w-3.5 h-3.5 text-rose-500" />
+                <span>Presione <kbd className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-zinc-800 text-[10px] font-mono font-bold text-slate-700 dark:text-zinc-300">Esc</kbd> para cerrar</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseModal}
+                className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-xs"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </View>
   );
 }
