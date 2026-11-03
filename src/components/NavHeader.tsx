@@ -1,13 +1,10 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ChevronLeft,
-  ChevronRight,
   Menu,
   Moon,
   Sparkles,
   Sun,
   X,
-  SlidersHorizontal,
 } from "lucide-react";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { applyTheme, getSavedTheme, saveTheme } from "@/lib/theme";
@@ -29,26 +26,26 @@ const DEFAULT_NEWS: NewsItem[] = [
   {
     id: "interfaz-renovada",
     tag: "NUEVA UI",
-    badgeColor: "#BE123C",
-    badgeBg: "rgba(190, 18, 60, 0.1)",
+    badgeColor: "#FB7185",
+    badgeBg: "rgba(244, 63, 94, 0.14)",
     icon: "sparkles",
     title: "Cinemark Renovado: Nueva Interfaz Corporativa",
     message:
-      "Diseño minimalista renovado con mayor legibilidad, barra lateral optimizada y modo claro/oscuro de alto contraste.",
+      "Diseño minimalista renovado con mayor legibilidad, controles centrados y modo claro/oscuro de alto contraste.",
     detail:
-      "Rediseñamos por completo la experiencia visual del panel operativo siguiendo estándares corporativos minimalistas (estilo Stripe/Notion), manteniendo intacta toda la lógica de proyección, programación, sincronización con servidor Docker y respaldo en Firebase.",
+      "Rediseñamos por completo la experiencia visual del panel operativo siguiendo estándares corporativos minimalistas, manteniendo intacta toda la lógica de proyección, programación, sincronización con servidor Docker y respaldo en Firebase.",
     ticker: "UI:V2.0 ▲",
     date: "Nuevo",
   },
   {
     id: "control-salas-promedio",
     tag: "SALAS",
-    badgeColor: "#D97706",
-    badgeBg: "rgba(217, 119, 6, 0.12)",
+    badgeColor: "#FBBF24",
+    badgeBg: "rgba(245, 158, 11, 0.14)",
     icon: "chart-donut",
     title: "Control de Salas: Porcentaje Promedio General de Daños",
     message:
-      "Control de Salas: Ahora en el encabezado del reporte figura el porcentaje promedio general de butacas rotas del complejo.",
+      "Control de Salas: Ahora en el encabezado del reporte figura el porcentaje promedio general de butacas rotas.",
     detail:
       "Tanto en la vista principal como en el encabezado y resumen del reporte PDF de Control de Salas, se muestra de forma destacada el porcentaje promedio general de daños sobre la capacidad total del complejo, junto con el desglose sala por sala.",
     ticker: "SALAS:PROM ▲",
@@ -57,16 +54,44 @@ const DEFAULT_NEWS: NewsItem[] = [
   {
     id: "eventos-editar-titulo",
     tag: "EVENTOS",
-    badgeColor: "#6D28D9",
-    badgeBg: "rgba(109, 40, 217, 0.12)",
+    badgeColor: "#A78BFA",
+    badgeBg: "rgba(167, 139, 250, 0.14)",
     icon: "pencil-outline",
     title: "Eventos: Edición Directa del Nombre y Título",
     message:
-      "Eventos: Al editar un evento ahora podés modificar directamente su nombre o título además de la sala y duración.",
+      "Eventos: Al editar un evento ahora podés modificar directamente su nombre o título además de sala y duración.",
     detail:
       "En el formulario de edición de Eventos se incorporó la posibilidad de renombrar o corregir el título/película del evento sin necesidad de eliminarlo y volver a cargarlo.",
     ticker: "EVT:EDIT ▲",
     date: "Reciente",
+  },
+  {
+    id: "dcp-sub-cas",
+    tag: "DCP",
+    badgeColor: "#34D399",
+    badgeBg: "rgba(52, 211, 153, 0.14)",
+    icon: "filmstrip",
+    title: "DCP: Identificación SUB / CAS en Historial",
+    message:
+      "DCP: En el historial de copias retiradas ahora se visualiza si correspondía a versión subtitulada (SUB) o castellano (CAS).",
+    detail:
+      "En el historial de copias DCP retiradas ahora se visualiza claramente el badge de idioma correspondiente para una trazabilidad precisa.",
+    ticker: "DCP:VERS ▲",
+    date: "Nuevo",
+  },
+  {
+    id: "programacion-toolbar",
+    tag: "PROGRAMACIÓN",
+    badgeColor: "#38BDF8",
+    badgeBg: "rgba(56, 189, 248, 0.14)",
+    icon: "calendar-clock",
+    title: "Programación: Controles Superiores y Selector de Semanas",
+    message:
+      "Programación: Controles de ajuste y modo arriba; cambiador de semana alineado a la derecha sin alterar el centrado.",
+    detail:
+      "Se reubicó la barra de controles de ajuste de horario, alternador de vista y sincronización en la parte superior, alineando el cambiador de semana a la derecha de los días de forma independiente.",
+    ticker: "PROG:SYNC ▲",
+    date: "Nuevo",
   },
 ];
 
@@ -87,16 +112,14 @@ export default function NavHeader({
   subtitle,
   sectionLabel,
   subSectionLabel,
-  onPressSettings,
+  onPressSettings: _onPressSettings,
   onPressMenu,
   themeMode: themeModeProp,
   onToggleTheme,
   newsItems,
 }: Props) {
   const [internalTheme, setInternalTheme] = useState<"light" | "dark">("light");
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     setInternalTheme(getSavedTheme());
@@ -117,34 +140,18 @@ export default function NavHeader({
   }, [onToggleTheme, activeTheme]);
 
   const news = newsItems && newsItems.length > 0 ? newsItems : DEFAULT_NEWS;
-  const currentNews = news[currentIndex] || news[0];
-
-  const handleNext = useCallback(() => {
-    setCurrentIndex((prev) => (prev + 1) % news.length);
-  }, [news.length]);
-
-  const handlePrev = useCallback(() => {
-    setCurrentIndex((prev) => (prev - 1 + news.length) % news.length);
-  }, [news.length]);
-
-  useEffect(() => {
-    if (isHovered || news.length <= 1) return;
-    const timer = setInterval(() => {
-      handleNext();
-    }, 6500);
-    return () => clearInterval(timer);
-  }, [isHovered, news.length, handleNext]);
+  const tickerItems = useMemo(() => [...news, ...news, ...news], [news]);
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-md transition-colors dark:border-zinc-800/80 dark:bg-zinc-950/90 lg:px-6">
-        {/* Left: Mobile Menu + Breadcrumbs */}
+      <header className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/95 px-4 backdrop-blur-md transition-colors dark:border-zinc-800/80 dark:bg-zinc-950/95 lg:px-6">
+        {/* Left: Mobile Menu + Breadcrumbs (Ruta de donde estamos parados) */}
         <div className="flex min-w-0 items-center gap-3">
           {onPressMenu && (
             <button
               type="button"
               onClick={onPressMenu}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 lg:hidden"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 lg:hidden cursor-pointer"
               aria-label="Abrir menú"
             >
               <Menu className="h-4 w-4" />
@@ -176,100 +183,12 @@ export default function NavHeader({
           </div>
         </div>
 
-        {/* Center: Minimalist Stripe/Notion Announcement Pill (Desktop) */}
-        <div className="mx-4 hidden max-w-2xl flex-1 items-center justify-center md:flex">
-          <div
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-            onClick={() => setModalVisible(true)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") setModalVisible(true);
-            }}
-            className="group flex h-9 w-full items-center gap-2.5 rounded-full border border-slate-200/90 bg-slate-50/80 px-3 text-xs shadow-sm transition-all hover:border-slate-300 hover:bg-white dark:border-zinc-800 dark:bg-zinc-900/80 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
-          >
-            {/* Tag pill */}
-            <span
-              style={{
-                color: currentNews.badgeColor,
-                backgroundColor: currentNews.badgeBg,
-              }}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-            >
-              <span
-                style={{ backgroundColor: currentNews.badgeColor }}
-                className="h-1.5 w-1.5 rounded-full"
-              />
-              {currentNews.tag}
-            </span>
-
-            {/* Message */}
-            <span className="min-w-0 flex-1 truncate font-medium text-slate-700 dark:text-zinc-300">
-              {currentNews.message}
-            </span>
-
-            {/* Ticker Code */}
-            <span className="hidden shrink-0 rounded bg-slate-200/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-600 dark:bg-zinc-800 dark:text-zinc-400 lg:inline-block">
-              {currentNews.ticker}
-            </span>
-
-            {/* Prev / Next Controls */}
-            <div
-              className="flex shrink-0 items-center gap-0.5 border-l border-slate-200 pl-2 dark:border-zinc-800"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                type="button"
-                onClick={handlePrev}
-                className="rounded p-0.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-                aria-label="Anterior novedad"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </button>
-              <span className="px-1 font-mono text-[10px] font-semibold text-slate-400 dark:text-zinc-500">
-                {currentIndex + 1}/{news.length}
-              </span>
-              <button
-                type="button"
-                onClick={handleNext}
-                className="rounded p-0.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-                aria-label="Siguiente novedad"
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Actions: Changelog button (mobile), Theme Toggle, Settings */}
+        {/* Right Actions: Dark Mode Toggle */}
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
-            onClick={() => setModalVisible(true)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 md:hidden"
-            title="Ver novedades"
-          >
-            <Sparkles className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
-            <span>Novedades</span>
-          </button>
-
-          {onPressSettings && (
-            <button
-              type="button"
-              onClick={onPressSettings}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-              title="Ajustes del complejo"
-              aria-label="Ajustes del complejo"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </button>
-          )}
-
-          <button
-            type="button"
             onClick={handleToggleTheme}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 cursor-pointer"
             title={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
             aria-label="Cambiar tema"
           >
@@ -287,6 +206,105 @@ export default function NavHeader({
           </button>
         </div>
       </header>
+
+      {/* Wall Street Stock Market Style Ticker Tape (below header, compact, continuous scroll to left) */}
+      <div className="sticky top-14 z-20 flex h-7 w-full shrink-0 items-center overflow-hidden border-b border-slate-800/90 bg-slate-950 text-slate-100 dark:border-zinc-800/90 dark:bg-black select-none">
+        {/* Left Fixed Live Badge */}
+        <button
+          type="button"
+          onClick={() => setModalVisible(true)}
+          className="z-20 flex h-full shrink-0 items-center gap-1.5 border-r border-slate-800 dark:border-zinc-800 bg-slate-950 dark:bg-black px-2.5 text-[10px] font-black tracking-wider text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+          title="Ver registro completo de novedades"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+          </span>
+          <span className="font-mono text-[10px] font-black tracking-wider text-emerald-400">
+            LIVE
+          </span>
+          <span className="hidden sm:inline font-mono text-[9px] font-semibold text-slate-400 dark:text-zinc-500">
+            TICKER
+          </span>
+        </button>
+
+        {/* Gradient fade on left near the badge */}
+        <div className="pointer-events-none absolute left-[56px] sm:left-[96px] top-0 bottom-0 w-6 z-10 bg-gradient-to-r from-slate-950 dark:from-black to-transparent" />
+
+        {/* Infinite Scrolling Ticker Track */}
+        <div className="relative flex-1 overflow-hidden h-full flex items-center">
+          <div className="animate-ticker">
+            {/* Copy A */}
+            <div className="flex items-center shrink-0">
+              {tickerItems.map((item, idx) => (
+                <button
+                  key={`ticker-a-${item.id}-${idx}`}
+                  type="button"
+                  onClick={() => setModalVisible(true)}
+                  className="inline-flex items-center gap-2 px-3.5 py-0.5 text-left transition-colors hover:bg-white/10 dark:hover:bg-white/5 cursor-pointer"
+                  title="Clic para ver detalle"
+                >
+                  <span
+                    className="inline-flex items-center gap-0.5 font-mono text-[10px] font-black tracking-tight"
+                    style={{ color: item.badgeColor }}
+                  >
+                    <span>▲</span>
+                    <span>{item.ticker.replace(" ▲", "")}</span>
+                  </span>
+
+                  <span className="font-bold text-[11px] text-white dark:text-zinc-200 tracking-tight">
+                    {item.tag}:
+                  </span>
+
+                  <span className="text-[11px] text-slate-300 dark:text-zinc-400 font-normal">
+                    {item.message}
+                  </span>
+
+                  <span className="text-slate-600 dark:text-zinc-700 text-xs mx-1.5 select-none">
+                    ✦
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Copy B (identical copy for continuous, seamless infinite loop) */}
+            <div className="flex items-center shrink-0" aria-hidden="true">
+              {tickerItems.map((item, idx) => (
+                <button
+                  key={`ticker-b-${item.id}-${idx}`}
+                  type="button"
+                  onClick={() => setModalVisible(true)}
+                  className="inline-flex items-center gap-2 px-3.5 py-0.5 text-left transition-colors hover:bg-white/10 dark:hover:bg-white/5 cursor-pointer"
+                  tabIndex={-1}
+                >
+                  <span
+                    className="inline-flex items-center gap-0.5 font-mono text-[10px] font-black tracking-tight"
+                    style={{ color: item.badgeColor }}
+                  >
+                    <span>▲</span>
+                    <span>{item.ticker.replace(" ▲", "")}</span>
+                  </span>
+
+                  <span className="font-bold text-[11px] text-white dark:text-zinc-200 tracking-tight">
+                    {item.tag}:
+                  </span>
+
+                  <span className="text-[11px] text-slate-300 dark:text-zinc-400 font-normal">
+                    {item.message}
+                  </span>
+
+                  <span className="text-slate-600 dark:text-zinc-700 text-xs mx-1.5 select-none">
+                    ✦
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Gradient fade on right edge */}
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-l from-slate-950 dark:from-black to-transparent" />
+      </div>
 
       {/* Modal de Novedades y Actualizaciones */}
       {modalVisible && (

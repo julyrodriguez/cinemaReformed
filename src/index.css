@@ -455,3 +455,25 @@ html.dark textarea::placeholder {
   color: #71717A !important;
 }
 
+/* Wall Street Stock Market Ticker Tape Animation */
+@keyframes ticker-scroll {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.animate-ticker {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+  animation: ticker-scroll 50s linear infinite;
+}
+
+.animate-ticker:hover {
+  animation-play-state: paused;
+}
+
+
