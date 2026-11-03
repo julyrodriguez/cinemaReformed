@@ -111,6 +111,12 @@ function ModelSelectCell({ value, onChange, style, placeholder }: ModelSelectCel
     return value !== "" && !MODELOS_OPTIONS.includes(value);
   });
 
+  useEffect(() => {
+    if (value !== "" && !MODELOS_OPTIONS.includes(value)) {
+      setIsEditingCustom(true);
+    }
+  }, [value]);
+
   const handleSelectChange = (val: string) => {
     if (val === "__CUSTOM__") {
       setIsEditingCustom(true);
@@ -125,7 +131,7 @@ function ModelSelectCell({ value, onChange, style, placeholder }: ModelSelectCel
       <TextInput
         value={value}
         onChangeText={onChange}
-        style={[style, { textAlign: "center" }]}
+        style={[style, { textAlign: "center", height: 34, paddingVertical: 0 }]}
         placeholder={placeholder || "Ej: DXL-30BAF/L"}
         placeholderTextColor={COLORS.muted}
       />
@@ -134,11 +140,11 @@ function ModelSelectCell({ value, onChange, style, placeholder }: ModelSelectCel
 
   if (isEditingCustom) {
     return (
-      <View style={{ flex: 1, flexDirection: "row", alignItems: "center", position: "relative" }}>
+      <View style={{ flex: 1, flexDirection: "row", alignItems: "center", position: "relative", minHeight: 34 }}>
         <TextInput
           value={value}
           onChangeText={onChange}
-          style={[style, { flex: 1, paddingRight: 24, textAlign: "center" }]}
+          style={[style, { flex: 1, paddingRight: 24, textAlign: "center", height: 34, paddingVertical: 0 }]}
           placeholder={placeholder || "Ej: DXL-30BAF/L"}
           placeholderTextColor={COLORS.muted}
           autoFocus
@@ -161,26 +167,41 @@ function ModelSelectCell({ value, onChange, style, placeholder }: ModelSelectCel
       value={value}
       onChange={(e) => handleSelectChange(e.target.value)}
       style={{
+        boxSizing: "border-box",
         backgroundColor: "transparent",
         color: value ? COLORS.text : COLORS.muted,
         borderWidth: 0,
-        padding: 8,
+        padding: "0 8px",
         fontSize: 12,
         fontWeight: "600",
         outlineWidth: 0,
         width: "100%",
-        height: 28,
+        height: 34,
         cursor: "pointer",
         fontFamily: "inherit",
         textAlign: "center",
         textAlignLast: "center",
+        lineHeight: "34px",
+        verticalAlign: "middle",
+        display: "block",
       }}
     >
-      <option value="" style={{ backgroundColor: "var(--card, #FFFFFF)", color: COLORS.muted, textAlign: "center" }}>{placeholder || "Seleccionar..."}</option>
+      <option value="" style={{ backgroundColor: "var(--card, #FFFFFF)", color: COLORS.muted, textAlign: "center" }}>
+        {placeholder || "Seleccionar..."}
+      </option>
       {MODELOS_OPTIONS.map((m) => (
-        <option key={m} value={m} style={{ backgroundColor: "var(--card, #FFFFFF)", color: COLORS.text, textAlign: "center" }}>{m}</option>
+        <option key={m} value={m} style={{ backgroundColor: "var(--card, #FFFFFF)", color: COLORS.text, textAlign: "center" }}>
+          {m}
+        </option>
       ))}
-      <option value="__CUSTOM__" style={{ fontWeight: "bold", backgroundColor: "var(--card, #FFFFFF)", color: COLORS.primary, textAlign: "center" }}>✍️ Escribir a mano...</option>
+      {value && !MODELOS_OPTIONS.includes(value) && (
+        <option key={value} value={value} style={{ backgroundColor: "var(--card, #FFFFFF)", color: COLORS.text, textAlign: "center" }}>
+          {value}
+        </option>
+      )}
+      <option value="__CUSTOM__" style={{ fontWeight: "bold", backgroundColor: "var(--card, #FFFFFF)", color: COLORS.primary, textAlign: "center" }}>
+        ✍️ Escribir a mano...
+      </option>
     </select>
   );
 }
@@ -1579,7 +1600,7 @@ export default function CierreMesScreen({ readOnly = false }: { readOnly?: boole
             return (
               <View key={`${tableKey}-${idx}`} style={[s.gridRow, idx % 2 === 1 && s.gridRowAlt]}>
                 {/* # */}
-                <View style={{ flex: 0.8, justifyContent: "center", alignItems: "center", minHeight: 28 }}>
+                <View style={{ flex: 0.8, justifyContent: "center", alignItems: "center", minHeight: 34 }}>
                   <Text style={[s.gridTd, { textAlign: "center", fontWeight: "bold", paddingHorizontal: 0 }]}>
                     {idx + 1}
                   </Text>
@@ -1708,7 +1729,7 @@ export default function CierreMesScreen({ readOnly = false }: { readOnly?: boole
         {pedido.map((item, idx) => (
           <View key={`order-${idx}`} style={[s.gridRow, idx % 2 === 1 && s.gridRowAlt]}>
             {/* # */}
-            <View style={{ flex: 0.8, alignItems: "center", justifyContent: "center", minHeight: 28 }}>
+            <View style={{ flex: 0.8, alignItems: "center", justifyContent: "center", minHeight: 34 }}>
               <Text style={[s.gridTd, { textAlign: "center", fontWeight: "bold", paddingHorizontal: 0 }]}>
                 {idx + 1}
               </Text>
@@ -2554,7 +2575,8 @@ const s = StyleSheet.create({
     alignItems: "center",
     borderBottomWidth: 0.5,
     borderBottomColor: COLORS.border,
-    paddingVertical: 4,
+    paddingVertical: 2,
+    minHeight: 36,
   },
   gridRowAlt: {
     backgroundColor: COLORS.bgMobile + "40",
@@ -2563,12 +2585,14 @@ const s = StyleSheet.create({
     fontSize: 12,
     color: COLORS.text,
     paddingHorizontal: 8,
+    lineHeight: 20,
   },
   gridInput: {
     fontSize: 12,
     color: COLORS.text,
     paddingHorizontal: 8,
-    height: 28,
+    paddingVertical: 0,
+    height: 34,
     fontWeight: "600",
     backgroundColor: "transparent",
     borderWidth: 0,
@@ -2582,7 +2606,7 @@ const s = StyleSheet.create({
   rowDeleteBtn: {
     justifyContent: "center",
     alignItems: "center",
-    height: 28,
+    height: 34,
   },
 
   // Mobile Cards for lists
