@@ -2399,6 +2399,158 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     }
   }, [cineId, selectedWeekStart]);
 
+  // -------------------------------------------------------------
+  // MOBILE REDESIGNED PROGRAMMING VIEW MEMOIZED DATA (Hooks before early returns)
+  // -------------------------------------------------------------
+  const mobileWeekDays = useMemo(() => {
+    return DAYS_OF_WEEK.map((d) => {
+      let dayNumber = "";
+      if (selectedWeekStart) {
+        try {
+          const dt = dayjs(selectedWeekStart).add(DAY_CYCLE_INDEX[d.key], "day");
+          dayNumber = dt.format("D");
+        } catch {
+          dayNumber = "";
+        }
+      }
+      return {
+        ...d,
+        dayNumber,
+        shortLabel: d.label.slice(0, 3).toUpperCase(),
+      };
+    });
+  }, [selectedWeekStart]);
+
+  const mobileFilteredShows = useMemo(() => {
+    let result = [...shows];
+
+    if (mobileSearchQuery.trim()) {
+      const q = mobileSearchQuery.toLowerCase().trim();
+      result = result.filter((s) => {
+        const titleMatch = s.pelicula?.toLowerCase().includes(q);
+        const salaMatch = `sala ${s.sala}`.includes(q) || String(s.sala) === q;
+        const formatMatch = s.sessionFormat?.toLowerCase().includes(q);
+        return titleMatch || salaMatch || formatMatch;
+      });
+    }
+
+    if (mobileFilter === "playing") {
+      result = result.filter((s) => getShowStatus(s) === "PLAYING");
+    } else if (mobileFilter === "upcoming") {
+      result = result.filter((s) => getShowStatus(s) === "FUTURE");
+    } else if (mobileFilter === "3d") {
+      result = result.filter((s) => !s.isEvent && (/3d/i.test(s.pelicula) || /3d/i.test(s.sessionFormat || "")));
+    } else if (mobileFilter === "events") {
+      result = result.filter((s) => s.isEvent);
+    }
+
+    return result.sort((a, b) => getOperationalStartMins(a) - getOperationalStartMins(b));
+  }, [shows, mobileSearchQuery, mobileFilter]);
+
+  const mobileMoviesList = useMemo(() => {
+    const map = new Map<string, {
+      title: string;
+      posterUrl?: string;
+      duration?: number;
+      calificacion?: string;
+      formats: Set<string>;
+      languages: Set<string>;
+      shows: DailyShow[];
+      totalSold: number;
+      totalCap: number;
+    }>();
+
+    mobileFilteredShows.forEach((s) => {
+      const key = s.pelicula || "Sin Título";
+      let existing = map.get(key);
+      if (!existing) {
+        existing = {
+          title: key,
+          posterUrl: s.posterUrl,
+          duration: s.runTime,
+          calificacion: s.calificacion,
+          formats: new Set<string>(),
+          languages: new Set<string>(),
+          shows: [],
+          totalSold: 0,
+          totalCap: 0,
+        };
+        map.set(key, existing);
+      }
+      if (!existing.posterUrl && s.posterUrl) {
+        existing.posterUrl = s.posterUrl;
+      }
+      if (s.sessionFormat) existing.formats.add(s.sessionFormat);
+      if (s.language) existing.languages.add(s.language);
+      if (s.soldSeats) existing.totalSold += s.soldSeats;
+      if (s.capacity) existing.totalCap += s.capacity;
+      existing.shows.push(s);
+    });
+
+    map.forEach((item) => {
+      item.shows.sort((a, b) => getOperationalStartMins(a) - getOperationalStartMins(b));
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.shows.length - a.shows.length);
+  }, [mobileFilteredShows]);
+
+  const mobileRoomsList = useMemo(() => {
+    const map = new Map<number, {
+      sala: number;
+      shows: DailyShow[];
+      totalSold: number;
+      totalCap: number;
+    }>();
+
+    mobileFilteredShows.forEach((s) => {
+      let existing = map.get(s.sala);
+      if (!existing) {
+        existing = {
+          sala: s.sala,
+          shows: [],
+          totalSold: 0,
+          totalCap: 0,
+        };
+        map.set(s.sala, existing);
+      }
+      if (s.soldSeats) existing.totalSold += s.soldSeats;
+      if (s.capacity) existing.totalCap += s.capacity;
+      existing.shows.push(s);
+    });
+
+    map.forEach((item) => {
+      item.shows.sort((a, b) => getOperationalStartMins(a) - getOperationalStartMins(b));
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.sala - b.sala);
+  }, [mobileFilteredShows]);
+
+  const mobileTodayMetrics = useMemo(() => {
+    let playingCount = 0;
+    let upcomingCount = 0;
+    let totalSold = 0;
+    let totalCap = 0;
+
+    shows.forEach((s) => {
+      const st = getShowStatus(s);
+      if (st === "PLAYING") playingCount++;
+      if (st === "FUTURE") upcomingCount++;
+      if (s.soldSeats) totalSold += s.soldSeats;
+      if (s.capacity) totalCap += s.capacity;
+    });
+
+    const occupancyRate = totalCap > 0 ? Math.round((totalSold / totalCap) * 100) : 0;
+
+    return {
+      totalShows: shows.length,
+      playingCount,
+      upcomingCount,
+      totalSold,
+      totalCap,
+      occupancyRate,
+    };
+  }, [shows]);
+
   if (loading) {
     return (
       <View style={styles.centerContainer}>
@@ -3146,155 +3298,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   // -------------------------------------------------------------
   // MOBILE REDESIGNED PROGRAMMING VIEW
   // -------------------------------------------------------------
-  const mobileWeekDays = useMemo(() => {
-    return DAYS_OF_WEEK.map((d) => {
-      let dayNumber = "";
-      if (selectedWeekStart) {
-        try {
-          const dt = dayjs(selectedWeekStart).add(DAY_CYCLE_INDEX[d.key], "day");
-          dayNumber = dt.format("D");
-        } catch {
-          dayNumber = "";
-        }
-      }
-      return {
-        ...d,
-        dayNumber,
-        shortLabel: d.label.slice(0, 3).toUpperCase(),
-      };
-    });
-  }, [selectedWeekStart]);
-
-  const mobileFilteredShows = useMemo(() => {
-    let result = [...shows];
-
-    if (mobileSearchQuery.trim()) {
-      const q = mobileSearchQuery.toLowerCase().trim();
-      result = result.filter((s) => {
-        const titleMatch = s.pelicula?.toLowerCase().includes(q);
-        const salaMatch = `sala ${s.sala}`.includes(q) || String(s.sala) === q;
-        const formatMatch = s.sessionFormat?.toLowerCase().includes(q);
-        return titleMatch || salaMatch || formatMatch;
-      });
-    }
-
-    if (mobileFilter === "playing") {
-      result = result.filter((s) => getShowStatus(s) === "PLAYING");
-    } else if (mobileFilter === "upcoming") {
-      result = result.filter((s) => getShowStatus(s) === "FUTURE");
-    } else if (mobileFilter === "3d") {
-      result = result.filter((s) => !s.isEvent && (/3d/i.test(s.pelicula) || /3d/i.test(s.sessionFormat || "")));
-    } else if (mobileFilter === "events") {
-      result = result.filter((s) => s.isEvent);
-    }
-
-    return result.sort((a, b) => getOperationalStartMins(a) - getOperationalStartMins(b));
-  }, [shows, mobileSearchQuery, mobileFilter]);
-
-  const mobileMoviesList = useMemo(() => {
-    const map = new Map<string, {
-      title: string;
-      posterUrl?: string;
-      duration?: number;
-      calificacion?: string;
-      formats: Set<string>;
-      languages: Set<string>;
-      shows: DailyShow[];
-      totalSold: number;
-      totalCap: number;
-    }>();
-
-    mobileFilteredShows.forEach((s) => {
-      const key = s.pelicula || "Sin Título";
-      let existing = map.get(key);
-      if (!existing) {
-        existing = {
-          title: key,
-          posterUrl: s.posterUrl,
-          duration: s.runTime,
-          calificacion: s.calificacion,
-          formats: new Set<string>(),
-          languages: new Set<string>(),
-          shows: [],
-          totalSold: 0,
-          totalCap: 0,
-        };
-        map.set(key, existing);
-      }
-      if (!existing.posterUrl && s.posterUrl) {
-        existing.posterUrl = s.posterUrl;
-      }
-      if (s.sessionFormat) existing.formats.add(s.sessionFormat);
-      if (s.language) existing.languages.add(s.language);
-      if (s.soldSeats) existing.totalSold += s.soldSeats;
-      if (s.capacity) existing.totalCap += s.capacity;
-      existing.shows.push(s);
-    });
-
-    map.forEach((item) => {
-      item.shows.sort((a, b) => getOperationalStartMins(a) - getOperationalStartMins(b));
-    });
-
-    return Array.from(map.values()).sort((a, b) => b.shows.length - a.shows.length);
-  }, [mobileFilteredShows]);
-
-  const mobileRoomsList = useMemo(() => {
-    const map = new Map<number, {
-      sala: number;
-      shows: DailyShow[];
-      totalSold: number;
-      totalCap: number;
-    }>();
-
-    mobileFilteredShows.forEach((s) => {
-      let existing = map.get(s.sala);
-      if (!existing) {
-        existing = {
-          sala: s.sala,
-          shows: [],
-          totalSold: 0,
-          totalCap: 0,
-        };
-        map.set(s.sala, existing);
-      }
-      if (s.soldSeats) existing.totalSold += s.soldSeats;
-      if (s.capacity) existing.totalCap += s.capacity;
-      existing.shows.push(s);
-    });
-
-    map.forEach((item) => {
-      item.shows.sort((a, b) => getOperationalStartMins(a) - getOperationalStartMins(b));
-    });
-
-    return Array.from(map.values()).sort((a, b) => a.sala - b.sala);
-  }, [mobileFilteredShows]);
-
-  const mobileTodayMetrics = useMemo(() => {
-    let playingCount = 0;
-    let upcomingCount = 0;
-    let totalSold = 0;
-    let totalCap = 0;
-
-    shows.forEach((s) => {
-      const st = getShowStatus(s);
-      if (st === "PLAYING") playingCount++;
-      if (st === "FUTURE") upcomingCount++;
-      if (s.soldSeats) totalSold += s.soldSeats;
-      if (s.capacity) totalCap += s.capacity;
-    });
-
-    const occupancyRate = totalCap > 0 ? Math.round((totalSold / totalCap) * 100) : 0;
-
-    return {
-      totalShows: shows.length,
-      playingCount,
-      upcomingCount,
-      totalSold,
-      totalCap,
-      occupancyRate,
-    };
-  }, [shows]);
-
   const renderMobileProgrammingView = () => {
     return (
       <div className="w-full flex flex-col gap-3 pb-24">
