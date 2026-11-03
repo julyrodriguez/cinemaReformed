@@ -609,9 +609,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             </span>
           </div>
 
-          {/* Scrollable Layout (centers content horizontally and vertically if it fits) */}
-          <div className="w-full flex-1 min-h-0 overflow-auto custom-scrollbar flex items-start justify-center">
-            <div className="mx-auto flex flex-col items-center gap-1 w-max px-2 py-1 m-auto">
+          {/* Scrollable Layout (start-aligned when overflowing to avoid left-side clipping) */}
+          <div className="w-full flex-1 min-h-0 overflow-auto custom-scrollbar">
+            <div className="w-max min-w-full flex flex-col items-center gap-1 pl-6 pr-5 sm:pl-8 sm:pr-6 py-2">
               {layout.rows.map((rowName) => {
                 const rowSeats = layout.seats[rowName];
                 if (!rowSeats) return null;
@@ -629,7 +629,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   <React.Fragment key={rowName}>
                     <div className="flex items-center gap-1">
                       {/* Left row letter badge */}
-                      <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-slate-800 text-slate-300 font-black text-[10px] sm:text-[11px] flex items-center justify-center shrink-0 shadow-xs border border-slate-700/60">
+                      <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-slate-800 text-slate-300 font-black text-[10px] sm:text-[11px] flex items-center justify-center shrink-0 shadow-xs border border-slate-700/60 mr-1.5 sm:mr-2">
                         {rowName}
                       </span>
 
@@ -698,7 +698,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       ))}
 
                       {/* Right row letter badge */}
-                      <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-slate-800 text-slate-300 font-black text-[10px] sm:text-[11px] flex items-center justify-center shrink-0 shadow-xs border border-slate-700/60 ml-0.5">
+                      <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-slate-800 text-slate-300 font-black text-[10px] sm:text-[11px] flex items-center justify-center shrink-0 shadow-xs border border-slate-700/60 ml-1.5 sm:ml-2">
                         {rowName}
                       </span>
                     </div>
@@ -3699,7 +3699,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           }}
         >
           <div
-            className="relative w-full max-w-[860px] xl:max-w-[900px] max-h-[82vh] sm:max-h-[620px] flex flex-col rounded-3xl bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+            className="relative w-full max-w-[920px] xl:max-w-[960px] max-h-[82vh] sm:max-h-[620px] flex flex-col rounded-3xl bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-5 sm:px-6 py-2.5 sm:py-3 border-b border-slate-100 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm shrink-0">
@@ -3732,7 +3732,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             {/* Body */}
             <div className="p-3 sm:p-4 lg:p-4.5 flex-1 min-h-0 flex flex-col lg:flex-row gap-3.5 lg:gap-4.5 overflow-hidden">
               {/* Left Column: Movie Hero & Visual Projection Schedule */}
-              <div className="w-full lg:w-[300px] xl:w-[320px] shrink-0 h-auto lg:h-full flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-1">
+              <div className="w-full lg:w-[290px] xl:w-[310px] shrink-0 h-auto lg:h-full flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-1">
                 {/* Poster & Main Info Card */}
                 <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 flex gap-2.5 shrink-0">
                   {selectedShow.posterUrl ? (
