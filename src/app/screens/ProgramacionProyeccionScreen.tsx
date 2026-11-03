@@ -491,7 +491,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const layout = activeSalaLayout;
     if (!layout) {
       return (
-        <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+        <div className="w-full h-48 lg:h-full flex flex-col items-center justify-center py-10 px-4 text-center">
           <div className="w-8 h-8 border-3 border-rose-500 border-t-transparent rounded-full animate-spin mb-3" />
           <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">Cargando plano de la sala...</p>
         </div>
@@ -541,7 +541,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const occupancyPct = totalPhysicalSeats > 0 ? Math.round((soldSeatsCount / totalPhysicalSeats) * 100) : 0;
 
     return (
-      <div className="w-full h-full flex flex-col gap-2.5 min-h-0 overflow-hidden">
+      <div className="w-full h-auto lg:h-full flex flex-col gap-2.5 min-h-0">
         {/* Consolidated Top Bar: Occupancy Stats + Legend in a single sleek horizontal strip */}
         <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-2xl bg-slate-100/90 dark:bg-zinc-800/60 border border-slate-200/80 dark:border-zinc-700/60 shrink-0">
           {/* Stats & Progress */}
@@ -600,7 +600,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         </div>
 
         {/* Seat Grid Cinema Canvas */}
-        <div className="w-full flex-1 min-h-0 rounded-2xl bg-slate-950 p-2.5 sm:p-3 border border-slate-800/90 shadow-inner flex flex-col items-center justify-start overflow-hidden">
+        <div className="w-full h-auto lg:h-full lg:flex-1 rounded-2xl bg-slate-950 p-2.5 sm:p-3 border border-slate-800/90 shadow-inner flex flex-col items-center justify-start shrink-0">
           {/* Curved Screen Graphic */}
           <div className="relative w-full max-w-[200px] mx-auto flex flex-col items-center mb-1.5 shrink-0">
             <div className="w-full h-2 border-t-[2.5px] border-rose-500/80 rounded-[50%] shadow-[0_-3px_8px_rgba(244,63,94,0.35)]" />
@@ -610,7 +610,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           </div>
 
           {/* Scrollable Layout (start-aligned when overflowing to avoid left-side clipping) */}
-          <div className="w-full flex-1 min-h-0 overflow-auto custom-scrollbar">
+          <div className="w-full h-auto lg:h-full lg:flex-1 min-h-0 overflow-x-auto overflow-y-visible lg:overflow-y-auto custom-scrollbar touch-pan-x">
             <div className="w-max min-w-full flex flex-col items-center gap-1 pl-6 pr-5 sm:pl-8 sm:pr-6 py-2">
               {layout.rows.map((rowName) => {
                 const rowSeats = layout.seats[rowName];
@@ -3691,7 +3691,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       {/* Modern Show Details Dialog */}
       {selectedShow && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 lg:pl-[76px] lg:pt-[76px] bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 lg:pl-[76px] lg:pt-[76px] bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCloseModal();
@@ -3699,10 +3699,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           }}
         >
           <div
-            className="relative w-full max-w-[920px] xl:max-w-[960px] max-h-[82vh] sm:max-h-[620px] flex flex-col rounded-3xl bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+            className="relative w-full max-w-[920px] xl:max-w-[960px] max-h-[92dvh] sm:max-h-[90dvh] lg:max-h-[620px] flex flex-col rounded-2xl sm:rounded-3xl bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-5 sm:px-6 py-2.5 sm:py-3 border-b border-slate-100 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm shrink-0">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-2.5 sm:py-3 border-b border-slate-100 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center border border-rose-500/20 shadow-2xs">
                   <Clapperboard className="w-4 h-4" />
@@ -3730,9 +3730,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             </div>
 
             {/* Body */}
-            <div className="p-3 sm:p-4 lg:p-4.5 flex-1 min-h-0 flex flex-col lg:flex-row gap-3.5 lg:gap-4.5 overflow-hidden">
+            <div className="p-3 sm:p-4 lg:p-4.5 flex-1 min-h-0 flex flex-col lg:flex-row gap-3.5 lg:gap-4.5 overflow-y-auto lg:overflow-hidden custom-scrollbar overscroll-contain">
               {/* Left Column: Movie Hero & Visual Projection Schedule */}
-              <div className="w-full lg:w-[290px] xl:w-[310px] shrink-0 h-auto lg:h-full flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-1">
+              <div className="w-full lg:w-[290px] xl:w-[310px] shrink-0 h-auto lg:h-full flex flex-col gap-2 overflow-visible lg:overflow-y-auto custom-scrollbar pr-0 lg:pr-1">
                 {/* Poster & Main Info Card */}
                 <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 flex gap-2.5 shrink-0">
                   {selectedShow.posterUrl ? (
@@ -3951,10 +3951,23 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               </div>
 
               {/* Right Column: Live Seat Map ("el mapita de la ubicacion") */}
-              <div className="flex-1 min-w-0 h-full flex flex-col min-h-0 overflow-hidden">
+              <div className="w-full lg:flex-1 min-w-0 h-auto lg:h-full flex flex-col min-h-0 lg:overflow-hidden shrink-0">
+                {/* Mobile section header */}
+                <div className="flex lg:hidden items-center gap-2 mb-2 pt-2 border-t border-slate-200/80 dark:border-zinc-800 shrink-0">
+                  <div className="w-6 h-6 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center text-xs">
+                    💺
+                  </div>
+                  <span className="text-xs font-black text-slate-800 dark:text-zinc-200">
+                    Plano de Ocupación · Sala {selectedShow.sala}
+                  </span>
+                  <span className="text-[10px] text-slate-400 dark:text-zinc-500 ml-auto font-medium">
+                    (Deslizar horizontalmente)
+                  </span>
+                </div>
+
                 {selectedShow.isSimulated ? (
                   loadingSeatMap ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
+                    <div className="w-full h-56 lg:h-full flex flex-col items-center justify-center py-12 px-4 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
                       <div className="w-7 h-7 border-3 border-rose-500 border-t-transparent rounded-full animate-spin mb-2.5" />
                       <p className="text-xs font-bold text-slate-700 dark:text-zinc-300">
                         Cargando plano en tiempo real...
@@ -3964,7 +3977,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       </p>
                     </div>
                   ) : seatMapError ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center py-10 px-4 text-center rounded-2xl bg-amber-500/10 border border-amber-500/20">
+                    <div className="w-full h-56 lg:h-full flex flex-col items-center justify-center py-10 px-4 text-center rounded-2xl bg-amber-500/10 border border-amber-500/20">
                       <AlertCircle className="w-7 h-7 text-amber-500 mb-1.5" />
                       <h4 className="text-xs font-black text-amber-700 dark:text-amber-400">
                         No se pudo cargar el mapa en vivo
@@ -3983,7 +3996,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   ) : (seatMapData || (selectedShow && selectedShow.occupiedSeats && selectedShow.occupiedSeats.length > 0)) ? (
                     renderSeatGrid(seatMapData)
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center py-12 px-4 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
+                    <div className="w-full h-56 lg:h-full flex flex-col items-center justify-center py-12 px-4 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
                       <Film className="w-7 h-7 text-slate-400 mb-1.5 opacity-50" />
                       <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
                         No hay información de butacas disponible para esta función.
@@ -3991,7 +4004,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     </div>
                   )
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center py-12 px-4 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
+                  <div className="w-full h-56 lg:h-full flex flex-col items-center justify-center py-12 px-4 text-center rounded-2xl bg-slate-50 dark:bg-zinc-950/40 border border-slate-200/80 dark:border-zinc-800">
                     <Info className="w-7 h-7 text-slate-400 mb-1.5 opacity-60" />
                     <h4 className="text-xs font-black text-slate-700 dark:text-zinc-300">
                       Función Manual / Sin API
@@ -4005,10 +4018,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-between px-5 sm:px-6 py-2 bg-slate-50/80 dark:bg-zinc-950/80 border-t border-slate-200/80 dark:border-zinc-800 shrink-0">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-2 bg-slate-50/80 dark:bg-zinc-950/80 border-t border-slate-200/80 dark:border-zinc-800 shrink-0">
               <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-zinc-400">
                 <Sparkles className="w-3.5 h-3.5 text-rose-500" />
-                <span>Presione <kbd className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-zinc-800 text-[10px] font-mono font-bold text-slate-700 dark:text-zinc-300">Esc</kbd> para cerrar</span>
+                <span className="hidden sm:inline">Presione <kbd className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-zinc-800 text-[10px] font-mono font-bold text-slate-700 dark:text-zinc-300">Esc</kbd> para cerrar</span>
+                <span className="sm:hidden font-semibold">Detalle de función y butacas</span>
               </div>
               <button
                 type="button"
