@@ -38,6 +38,11 @@ import {
   Lightbulb,
   Maximize2,
   Minimize2,
+  Search,
+  BarChart3,
+  Download,
+  ArrowLeft,
+  Layers,
 } from "lucide-react";
 import { doc, onSnapshot, getDoc, collection } from "@/lib/dbService";
 import { db, CINES_COLLECTION, functions } from "../../lib/firebaseConfig";
@@ -328,6 +333,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [showStatsPanel, setShowStatsPanel] = useState(false);
   const [statsSubTab, setStatsSubTab] = useState<"todo" | "resumen" | "peliculas" | "dias" | "salas" | "alertas">("todo");
   const [adjustShowtimes, setAdjustShowtimes] = useState<boolean>(false);
+
+  // Dedicated Mobile View State
+  const [mobileViewMode, setMobileViewMode] = useState<"timeline" | "movies" | "rooms">("timeline");
+  const [mobileSearchQuery, setMobileSearchQuery] = useState<string>("");
+  const [mobileFilter, setMobileFilter] = useState<"all" | "playing" | "upcoming" | "3d" | "events">("all");
 
   // Seat Map Integration
   const [seatMapData, setSeatMapData] = useState<any | null>(null);
@@ -3131,7 +3141,888 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       ? `Semana del ${savedWeekly.startDate}`
       : "Programación Semanal");
 
-  const hasHeaderContent = !!formattedWeekLabel || !useApiData || (useApiData && !!apiError);
+  const hasHeaderContent = !isMobile && (!!formattedWeekLabel || !useApiData || (useApiData && !!apiError));
+
+  // -------------------------------------------------------------
+  // MOBILE REDESIGNED PROGRAMMING VIEW
+  // -------------------------------------------------------------
+  const mobileWeekDays = useMemo(() => {
+    return DAYS_OF_WEEK.map((d) => {
+      let dayNumber = "";
+      if (selectedWeekStart) {
+        try {
+          const dt = dayjs(selectedWeekStart).add(DAY_CYCLE_INDEX[d.key], "day");
+          dayNumber = dt.format("D");
+        } catch {
+          dayNumber = "";
+        }
+      }
+      return {
+        ...d,
+        dayNumber,
+        shortLabel: d.label.slice(0, 3).toUpperCase(),
+      };
+    });
+  }, [selectedWeekStart]);
+
+  const mobileFilteredShows = useMemo(() => {
+    let result = [...shows];
+
+    if (mobileSearchQuery.trim()) {
+      const q = mobileSearchQuery.toLowerCase().trim();
+      result = result.filter((s) => {
+        const titleMatch = s.pelicula?.toLowerCase().includes(q);
+        const salaMatch = `sala ${s.sala}`.includes(q) || String(s.sala) === q;
+        const formatMatch = s.sessionFormat?.toLowerCase().includes(q);
+        return titleMatch || salaMatch || formatMatch;
+      });
+    }
+
+    if (mobileFilter === "playing") {
+      result = result.filter((s) => getShowStatus(s) === "PLAYING");
+    } else if (mobileFilter === "upcoming") {
+      result = result.filter((s) => getShowStatus(s) === "FUTURE");
+    } else if (mobileFilter === "3d") {
+      result = result.filter((s) => !s.isEvent && (/3d/i.test(s.pelicula) || /3d/i.test(s.sessionFormat || "")));
+    } else if (mobileFilter === "events") {
+      result = result.filter((s) => s.isEvent);
+    }
+
+    return result.sort((a, b) => getOperationalStartMins(a) - getOperationalStartMins(b));
+  }, [shows, mobileSearchQuery, mobileFilter]);
+
+  const mobileMoviesList = useMemo(() => {
+    const map = new Map<string, {
+      title: string;
+      posterUrl?: string;
+      duration?: number;
+      calificacion?: string;
+      formats: Set<string>;
+      languages: Set<string>;
+      shows: DailyShow[];
+      totalSold: number;
+      totalCap: number;
+    }>();
+
+    mobileFilteredShows.forEach((s) => {
+      const key = s.pelicula || "Sin Título";
+      let existing = map.get(key);
+      if (!existing) {
+        existing = {
+          title: key,
+          posterUrl: s.posterUrl,
+          duration: s.runTime,
+          calificacion: s.calificacion,
+          formats: new Set<string>(),
+          languages: new Set<string>(),
+          shows: [],
+          totalSold: 0,
+          totalCap: 0,
+        };
+        map.set(key, existing);
+      }
+      if (!existing.posterUrl && s.posterUrl) {
+        existing.posterUrl = s.posterUrl;
+      }
+      if (s.sessionFormat) existing.formats.add(s.sessionFormat);
+      if (s.language) existing.languages.add(s.language);
+      if (s.soldSeats) existing.totalSold += s.soldSeats;
+      if (s.capacity) existing.totalCap += s.capacity;
+      existing.shows.push(s);
+    });
+
+    map.forEach((item) => {
+      item.shows.sort((a, b) => getOperationalStartMins(a) - getOperationalStartMins(b));
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.shows.length - a.shows.length);
+  }, [mobileFilteredShows]);
+
+  const mobileRoomsList = useMemo(() => {
+    const map = new Map<number, {
+      sala: number;
+      shows: DailyShow[];
+      totalSold: number;
+      totalCap: number;
+    }>();
+
+    mobileFilteredShows.forEach((s) => {
+      let existing = map.get(s.sala);
+      if (!existing) {
+        existing = {
+          sala: s.sala,
+          shows: [],
+          totalSold: 0,
+          totalCap: 0,
+        };
+        map.set(s.sala, existing);
+      }
+      if (s.soldSeats) existing.totalSold += s.soldSeats;
+      if (s.capacity) existing.totalCap += s.capacity;
+      existing.shows.push(s);
+    });
+
+    map.forEach((item) => {
+      item.shows.sort((a, b) => getOperationalStartMins(a) - getOperationalStartMins(b));
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.sala - b.sala);
+  }, [mobileFilteredShows]);
+
+  const mobileTodayMetrics = useMemo(() => {
+    let playingCount = 0;
+    let upcomingCount = 0;
+    let totalSold = 0;
+    let totalCap = 0;
+
+    shows.forEach((s) => {
+      const st = getShowStatus(s);
+      if (st === "PLAYING") playingCount++;
+      if (st === "FUTURE") upcomingCount++;
+      if (s.soldSeats) totalSold += s.soldSeats;
+      if (s.capacity) totalCap += s.capacity;
+    });
+
+    const occupancyRate = totalCap > 0 ? Math.round((totalSold / totalCap) * 100) : 0;
+
+    return {
+      totalShows: shows.length,
+      playingCount,
+      upcomingCount,
+      totalSold,
+      totalCap,
+      occupancyRate,
+    };
+  }, [shows]);
+
+  const renderMobileProgrammingView = () => {
+    return (
+      <div className="w-full flex flex-col gap-3 pb-24">
+        {/* Mobile Header Card: Week Selector & Actions */}
+        <div className="rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 shadow-xs p-3 flex flex-col gap-2.5">
+          {/* Week Selector */}
+          <div className="flex items-center justify-between gap-2">
+            {useApiData && availableWeeks.length > 1 ? (() => {
+              const currentIndex = availableWeeks.indexOf(selectedWeekStart);
+              const canGoPrev = currentIndex > 0;
+              const canGoNext = currentIndex < availableWeeks.length - 1;
+              const currentWeek = getMovieWeekStartForNow();
+              const isCurrent = selectedWeekStart === currentWeek;
+              
+              let label = formatWeekRange(selectedWeekStart);
+              let tagText = isCurrent ? "Actual" : selectedWeekStart > currentWeek ? "Preventa" : "Pasada";
+              let tagColor = isCurrent
+                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border-slate-200 dark:border-zinc-700";
+
+              return (
+                <div className="flex-1 flex items-center justify-between bg-slate-50 dark:bg-zinc-950/70 rounded-xl p-1 border border-slate-200/60 dark:border-zinc-800/80">
+                  <button
+                    type="button"
+                    disabled={!canGoPrev}
+                    onClick={() => setSelectedWeekStart(availableWeeks[currentIndex - 1])}
+                    className="p-1.5 rounded-lg text-slate-600 dark:text-zinc-400 hover:bg-slate-200/60 dark:hover:bg-zinc-800 disabled:opacity-25 transition-colors cursor-pointer"
+                    title="Semana anterior"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <div className="flex items-center gap-1.5 min-w-0 px-1 text-center">
+                    <Calendar size={13} className="text-rose-500 shrink-0" />
+                    <span className="text-xs font-bold text-slate-800 dark:text-zinc-200 truncate">
+                      {label}
+                    </span>
+                    <span className={`px-1.5 py-0.2 rounded-md text-[9px] font-black border uppercase tracking-wider shrink-0 ${tagColor}`}>
+                      {tagText}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!canGoNext}
+                    onClick={() => setSelectedWeekStart(availableWeeks[currentIndex + 1])}
+                    className="p-1.5 rounded-lg text-slate-600 dark:text-zinc-400 hover:bg-slate-200/60 dark:hover:bg-zinc-800 disabled:opacity-25 transition-colors cursor-pointer"
+                    title="Semana siguiente"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              );
+            })() : (
+              <div className="flex-1 text-center py-1">
+                <span className="text-xs font-black text-slate-800 dark:text-zinc-200">
+                  {formattedWeekLabel || "Programación Semanal"}
+                </span>
+              </div>
+            )}
+
+            {/* Quick Sync Button */}
+            {useApiData && (
+              <button
+                type="button"
+                onClick={handleManualSync}
+                disabled={syncing}
+                className="p-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white shadow-xs transition-all flex items-center justify-center shrink-0 cursor-pointer disabled:opacity-50"
+                title="Sincronizar programación"
+              >
+                <RotateCw size={15} className={syncing ? "animate-spin" : ""} />
+              </button>
+            )}
+          </div>
+
+          {/* Quick Actions Row: Ajuste salidas, Stats, HTML */}
+          <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100 dark:border-zinc-800/80">
+            <button
+              type="button"
+              onClick={() => {
+                if (hasSavedProgramming) {
+                  setAdjustShowtimes((prev) => !prev);
+                } else {
+                  const msg = "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios.";
+                  alert(msg);
+                }
+              }}
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-colors cursor-pointer ${
+                adjustShowtimes && hasSavedProgramming
+                  ? "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400"
+                  : "bg-slate-100 dark:bg-zinc-950 border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400"
+              }`}
+            >
+              <CheckSquare size={13} className={adjustShowtimes && hasSavedProgramming ? "text-rose-600 dark:text-rose-400" : "text-slate-400"} />
+              <span>Ajustar salidas</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowStatsPanel((prev) => !prev)}
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-colors cursor-pointer ${
+                showStatsPanel
+                  ? "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
+                  : "bg-slate-100 dark:bg-zinc-950 border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400"
+              }`}
+            >
+              <BarChart3 size={13} />
+              <span>{showStatsPanel ? "Volver a funciones" : "Estadísticas"}</span>
+            </button>
+
+            {useApiData && (
+              <button
+                type="button"
+                onClick={downloadWeeklyHtml}
+                className="p-1.5 rounded-xl bg-slate-100 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                title="Descargar HTML"
+              >
+                <Download size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* API Error Alert if any */}
+          {useApiData && apiError && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px] font-bold border border-amber-500/20">
+              <Info size={13} className="shrink-0" />
+              <span className="truncate">{apiError}</span>
+            </div>
+          )}
+        </div>
+
+        {/* If user toggled stats panel on mobile, display stats panel with return button */}
+        {showStatsPanel ? (
+          <div className="flex flex-col gap-2.5">
+            <button
+              type="button"
+              onClick={() => setShowStatsPanel(false)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-xs font-bold text-slate-700 dark:text-zinc-200 self-start transition-colors cursor-pointer shadow-2xs"
+            >
+              <ArrowLeft size={14} />
+              <span>Volver a Funciones</span>
+            </button>
+            {renderStatsPanel()}
+          </div>
+        ) : (
+          <>
+            {/* Horizontal Day Calendar Strip */}
+            <div className="overflow-x-auto custom-scrollbar pb-1 -mx-1 px-1">
+              <div className="flex items-center gap-1.5 w-max mx-auto">
+                {mobileWeekDays.map((day) => {
+                  const isActive = selectedDay === day.key;
+                  return (
+                    <button
+                      key={day.key}
+                      type="button"
+                      onClick={() => setSelectedDay(day.key)}
+                      className={`flex flex-col items-center justify-center w-[44px] py-2 rounded-2xl transition-all cursor-pointer ${
+                        isActive
+                          ? "bg-gradient-to-b from-rose-500 to-rose-600 text-white shadow-md shadow-rose-500/30 scale-105 border border-rose-400/50"
+                          : "bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 text-slate-700 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800/60"
+                      }`}
+                    >
+                      <span className={`text-[9.5px] font-black uppercase tracking-wider ${isActive ? "text-rose-100" : "text-slate-400 dark:text-zinc-500"}`}>
+                        {day.shortLabel}
+                      </span>
+                      <span className={`text-sm font-black leading-tight mt-0.5 ${isActive ? "text-white" : "text-slate-800 dark:text-zinc-200"}`}>
+                        {day.dayNumber || "•"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Quick Metrics Bar (Pulse of the day) */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="p-2.5 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 shadow-2xs flex flex-col items-center text-center">
+                <span className="text-[9.5px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
+                  Funciones
+                </span>
+                <span className="text-base font-black text-slate-900 dark:text-zinc-100 font-mono mt-0.5">
+                  {mobileTodayMetrics.totalShows}
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 shadow-2xs flex flex-col items-center text-center">
+                <span className="text-[9.5px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> En Vivo
+                </span>
+                <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
+                  {mobileTodayMetrics.playingCount}
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 shadow-2xs flex flex-col items-center text-center">
+                <span className="text-[9.5px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
+                  Ocupación
+                </span>
+                <span className="text-base font-black text-rose-600 dark:text-rose-400 font-mono mt-0.5">
+                  {mobileTodayMetrics.occupancyRate}%
+                </span>
+              </div>
+            </div>
+
+            {/* Search Bar & View Mode Switcher */}
+            <div className="flex flex-col gap-2">
+              {/* Search Bar */}
+              <div className="relative w-full">
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={mobileSearchQuery}
+                  onChange={(e) => setMobileSearchQuery(e.target.value)}
+                  placeholder="Buscar película, sala o formato..."
+                  className="w-full pl-9 pr-8 py-2 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 text-xs font-semibold text-slate-900 dark:text-zinc-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all shadow-2xs"
+                />
+                {mobileSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setMobileSearchQuery("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 cursor-pointer"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+
+              {/* View Mode Segmented Control */}
+              <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-slate-200/70 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setMobileViewMode("timeline")}
+                  className={`flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    mobileViewMode === "timeline"
+                      ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
+                      : "text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  <Clock size={13} />
+                  <span>Horarios</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileViewMode("movies")}
+                  className={`flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    mobileViewMode === "movies"
+                      ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
+                      : "text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  <Film size={13} />
+                  <span>Películas</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileViewMode("rooms")}
+                  className={`flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    mobileViewMode === "rooms"
+                      ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
+                      : "text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  <Clapperboard size={13} />
+                  <span>Salas</span>
+                </button>
+              </div>
+
+              {/* Filter Chips */}
+              <div className="overflow-x-auto custom-scrollbar pb-0.5 -mx-1 px-1">
+                <div className="flex items-center gap-1.5 w-max">
+                  <button
+                    type="button"
+                    onClick={() => setMobileFilter("all")}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                      mobileFilter === "all"
+                        ? "bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-2xs"
+                        : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border border-slate-200/80 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    Todas ({shows.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileFilter("playing")}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                      mobileFilter === "playing"
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "bg-white dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 border border-slate-200/80 dark:border-zinc-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>En Vivo ({mobileTodayMetrics.playingCount})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileFilter("upcoming")}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                      mobileFilter === "upcoming"
+                        ? "bg-sky-600 text-white shadow-2xs"
+                        : "bg-white dark:bg-zinc-900 text-sky-600 dark:text-sky-400 border border-slate-200/80 dark:border-zinc-800 hover:bg-sky-50 dark:hover:bg-sky-950/20"
+                    }`}
+                  >
+                    Próximas ({mobileTodayMetrics.upcomingCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileFilter("3d")}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                      mobileFilter === "3d"
+                        ? "bg-purple-600 text-white shadow-2xs"
+                        : "bg-white dark:bg-zinc-900 text-purple-600 dark:text-purple-400 border border-slate-200/80 dark:border-zinc-800 hover:bg-purple-50 dark:hover:bg-purple-950/20"
+                    }`}
+                  >
+                    3D / XD
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileFilter("events")}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                      mobileFilter === "events"
+                        ? "bg-amber-600 text-white shadow-2xs"
+                        : "bg-white dark:bg-zinc-900 text-amber-600 dark:text-amber-400 border border-slate-200/80 dark:border-zinc-800 hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                    }`}
+                  >
+                    Eventos
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Empty State when no shows match */}
+            {mobileFilteredShows.length === 0 ? (
+              <div className="py-12 px-4 rounded-3xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 text-center flex flex-col items-center">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-400 mb-3">
+                  <Film size={24} className="opacity-40" />
+                </div>
+                <h4 className="text-sm font-black text-slate-800 dark:text-zinc-200">
+                  No se encontraron funciones
+                </h4>
+                <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1 max-w-xs">
+                  {mobileSearchQuery || mobileFilter !== "all"
+                    ? "Prueba cambiando o limpiando los filtros de búsqueda."
+                    : "No hay funciones programadas para este día."}
+                </p>
+                {(mobileSearchQuery || mobileFilter !== "all") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileSearchQuery("");
+                      setMobileFilter("all");
+                    }}
+                    className="mt-3 px-3.5 py-1.5 rounded-xl bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs font-bold transition-all cursor-pointer shadow-xs"
+                  >
+                    Limpiar Filtros
+                  </button>
+                )}
+              </div>
+            ) : null}
+
+            {/* View Mode 1: Timeline Feed (Cronológico) */}
+            {mobileViewMode === "timeline" && mobileFilteredShows.length > 0 && (
+              <div className="flex flex-col gap-2.5">
+                {mobileFilteredShows.map((s, idx) => {
+                  const status = getShowStatus(s);
+                  const isPlaying = status === "PLAYING";
+                  const isPast = status === "PAST";
+                  const is3D = !s.isEvent && (/3d/i.test(s.pelicula) || /3d/i.test(s.sessionFormat || ""));
+                  const cap = s.capacity || 0;
+                  const sold = s.soldSeats || 0;
+                  const hasSales = cap > 0 && s.soldSeats !== undefined;
+                  const occupancyPct = hasSales ? Math.round((sold / cap) * 100) : 0;
+                  const barColor = occupancyPct >= 80 ? "bg-rose-500" : occupancyPct >= 40 ? "bg-amber-500" : "bg-emerald-500";
+
+                  return (
+                    <div
+                      key={`timeline-${s.sessionId || s.sala + '-' + s.inicio + '-' + idx}`}
+                      onClick={() => {
+                        setSelectedShow(s);
+                        if (s.isSimulated) fetchSeatMap(s);
+                      }}
+                      className={`relative flex flex-col p-3 rounded-2xl bg-white dark:bg-zinc-900 border transition-all active:scale-[0.99] cursor-pointer shadow-xs ${
+                        isPlaying
+                          ? "border-emerald-500/80 ring-1 ring-emerald-500/30"
+                          : isPast
+                          ? "border-slate-200/60 dark:border-zinc-800/60 opacity-60"
+                          : "border-slate-200/90 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700"
+                      }`}
+                    >
+                      {/* Top Header of Card: Time & Status */}
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-zinc-800/80">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-base font-black text-slate-900 dark:text-zinc-100 tracking-tight">
+                            {s.inicio}
+                          </span>
+                          <span className="text-slate-300 dark:text-zinc-600 font-bold">➔</span>
+                          <span className="font-mono text-xs font-semibold text-slate-500 dark:text-zinc-400">
+                            {s.fin} hs
+                          </span>
+                          {s.runTime ? (
+                            <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
+                              ({s.runTime}m)
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div>
+                          {isPlaying ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-black uppercase">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              En Proyección
+                            </span>
+                          ) : isPast ? (
+                            <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 text-[10px] font-semibold">
+                              Finalizada
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 text-[10px] font-bold">
+                              Próxima
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Main Content: Poster + Movie Details */}
+                      <div className="flex gap-3 pt-2.5">
+                        {/* Poster or Icon */}
+                        <div className="relative w-14 h-20 rounded-xl overflow-hidden bg-slate-100 dark:bg-zinc-800 border border-slate-200/80 dark:border-zinc-800 shrink-0 shadow-2xs">
+                          {s.posterUrl ? (
+                            <img
+                              src={s.posterUrl}
+                              alt={s.pelicula}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
+                              <Film size={20} className="opacity-40" />
+                            </div>
+                          )}
+                          {/* Format overlay chip */}
+                          {s.sessionFormat ? (
+                            <span className={`absolute bottom-0.5 left-0.5 right-0.5 text-center py-0.2 rounded text-[8.5px] font-black uppercase text-white shadow-xs ${
+                              is3D ? "bg-purple-600" : /xd/i.test(s.sessionFormat) ? "bg-amber-600" : "bg-slate-900/90"
+                            }`}>
+                              {s.sessionFormat}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {/* Details */}
+                        <div className="flex-1 flex flex-col justify-between min-w-0">
+                          <div>
+                            <h4 className="text-sm font-black text-slate-900 dark:text-zinc-100 leading-snug line-clamp-2">
+                              {s.pelicula}
+                            </h4>
+
+                            {/* Tags Row */}
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                              <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-black text-[10.5px] shadow-2xs">
+                                Sala {s.sala}
+                              </span>
+                              {s.language ? (
+                                <span className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700 text-[10px] font-bold">
+                                  {s.language}
+                                </span>
+                              ) : null}
+                              {s.calificacion ? (
+                                <span className="px-1.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20 text-[10px] font-bold">
+                                  {s.calificacion}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          {/* Credits clock time if available */}
+                          {s.creditosHoraReloj && (
+                            <div className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400 mt-1 flex items-center gap-1">
+                              <span>🎬 Créditos:</span>
+                              <strong className="text-slate-800 dark:text-zinc-200 font-mono">{s.creditosHoraReloj} hs</strong>
+                            </div>
+                          )}
+
+                          {/* Event extra tags */}
+                          {(s.desayuno || s.combo) && (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              {s.desayuno && <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">☕ Desayuno</span>}
+                              {s.combo && <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">🍿 Combo</span>}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Footer of Card: Occupancy Bar & Live Seat Map Prompt */}
+                      <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-zinc-800/80 flex items-center justify-between gap-2">
+                        {hasSales ? (
+                          <div className="flex-1 flex items-center gap-2">
+                            <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${barColor}`}
+                                style={{ width: `${Math.min(100, occupancyPct)}%` }}
+                              />
+                            </div>
+                            <span className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 font-mono shrink-0">
+                              {sold}/{cap} ({occupancyPct}%)
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 dark:text-zinc-500">
+                            {s.isEvent ? "Evento Especial" : "Sin datos de venta"}
+                          </span>
+                        )}
+
+                        <div className="flex items-center gap-1 text-[11px] font-bold text-rose-600 dark:text-rose-400 shrink-0">
+                          <span>Ver plano</span>
+                          <ChevronRight size={13} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* View Mode 2: By Movie (Catálogo por Película) */}
+            {mobileViewMode === "movies" && mobileMoviesList.length > 0 && (
+              <div className="flex flex-col gap-3">
+                {mobileMoviesList.map((movie) => {
+                  return (
+                    <div
+                      key={`movie-${movie.title}`}
+                      className="p-3 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 shadow-xs flex flex-col gap-2.5"
+                    >
+                      <div className="flex gap-3">
+                        <div className="w-16 h-24 rounded-xl overflow-hidden bg-slate-100 dark:bg-zinc-800 border border-slate-200/80 dark:border-zinc-800 shrink-0 shadow-xs">
+                          {movie.posterUrl ? (
+                            <img
+                              src={movie.posterUrl}
+                              alt={movie.title}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
+                              <Film size={24} className="opacity-40" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 flex flex-col justify-between min-w-0">
+                          <div>
+                            <h4 className="text-sm font-black text-slate-900 dark:text-zinc-100 leading-snug">
+                              {movie.title}
+                            </h4>
+                            <div className="flex flex-wrap items-center gap-1 mt-1">
+                              {movie.duration ? (
+                                <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400">
+                                  ⏱️ {movie.duration}m
+                                </span>
+                              ) : null}
+                              {movie.calificacion ? (
+                                <span className="px-1.5 py-0.2 rounded-md bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20 text-[9.5px] font-bold">
+                                  {movie.calificacion}
+                                </span>
+                              ) : null}
+                              {Array.from(movie.formats).map((fmt) => (
+                                <span key={fmt} className="px-1.5 py-0.2 rounded-md bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700 text-[9.5px] font-bold">
+                                  {fmt}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="text-[11px] font-bold text-slate-600 dark:text-zinc-400">
+                            <span>{movie.shows.length} funciones hoy</span>
+                            {movie.totalSold > 0 ? (
+                              <span> · <strong className="text-slate-800 dark:text-zinc-200">{movie.totalSold}</strong> butacas</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Showtime pills */}
+                      <div className="pt-2 border-t border-slate-100 dark:border-zinc-800/80 flex flex-wrap gap-1.5">
+                        {movie.shows.map((s, sIdx) => {
+                          const status = getShowStatus(s);
+                          const isPlaying = status === "PLAYING";
+                          const isPast = status === "PAST";
+                          const cap = s.capacity || 0;
+                          const sold = s.soldSeats || 0;
+                          const occ = cap > 0 ? Math.round((sold / cap) * 100) : 0;
+
+                          return (
+                            <button
+                              key={`movie-show-${s.sessionId || sIdx}`}
+                              type="button"
+                              onClick={() => {
+                                setSelectedShow(s);
+                                if (s.isSimulated) fetchSeatMap(s);
+                              }}
+                              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all active:scale-95 cursor-pointer ${
+                                isPlaying
+                                  ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 font-black shadow-2xs"
+                                  : isPast
+                                  ? "bg-slate-100/60 dark:bg-zinc-800/40 border-slate-200/50 dark:border-zinc-800 text-slate-400 dark:text-zinc-500 font-medium"
+                                  : "bg-slate-50 dark:bg-zinc-800/80 hover:bg-rose-50 dark:hover:bg-rose-950/20 border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 font-bold"
+                              }`}
+                            >
+                              <span className="font-mono text-xs">{s.inicio}</span>
+                              <span className="text-[10px] text-slate-400 dark:text-zinc-500">· Sala {s.sala}</span>
+                              {occ > 0 && (
+                                <span className={`text-[9px] px-1 py-0.2 rounded font-black ${
+                                  occ >= 80 ? 'bg-rose-500 text-white' : occ >= 50 ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300' : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                                }`}>
+                                  {occ}%
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* View Mode 3: By Room (Salas) */}
+            {mobileViewMode === "rooms" && mobileRoomsList.length > 0 && (
+              <div className="flex flex-col gap-3">
+                {mobileRoomsList.map((room) => {
+                  return (
+                    <div
+                      key={`room-${room.sala}`}
+                      className="p-3 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 shadow-xs flex flex-col gap-2.5"
+                    >
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-zinc-800/80">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900 flex items-center justify-center font-black text-xs shadow-2xs">
+                            {room.sala}
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-slate-900 dark:text-zinc-100">
+                              Sala {room.sala}
+                            </h4>
+                            <p className="text-[10.5px] font-semibold text-slate-400 dark:text-zinc-500">
+                              {room.shows.length} funciones hoy
+                            </p>
+                          </div>
+                        </div>
+                        {room.totalSold > 0 && (
+                          <span className="text-xs font-mono font-bold text-rose-600 dark:text-rose-400">
+                            {room.totalSold} butacas
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Shows inside this room */}
+                      <div className="flex flex-col gap-2">
+                        {room.shows.map((s, sIdx) => {
+                          const status = getShowStatus(s);
+                          const isPlaying = status === "PLAYING";
+                          const isPast = status === "PAST";
+                          const cap = s.capacity || 0;
+                          const sold = s.soldSeats || 0;
+                          const occ = cap > 0 ? Math.round((sold / cap) * 100) : 0;
+
+                          return (
+                            <div
+                              key={`room-show-${s.sessionId || sIdx}`}
+                              onClick={() => {
+                                setSelectedShow(s);
+                                if (s.isSimulated) fetchSeatMap(s);
+                              }}
+                              className={`p-2.5 rounded-xl border flex items-center justify-between gap-2.5 transition-all active:scale-[0.99] cursor-pointer ${
+                                isPlaying
+                                  ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-800 dark:text-emerald-200"
+                                  : isPast
+                                  ? "bg-slate-50 dark:bg-zinc-950/40 border-slate-200/50 dark:border-zinc-800/60 opacity-60"
+                                  : "bg-slate-50 dark:bg-zinc-950 border-slate-200/80 dark:border-zinc-800/80 hover:border-slate-300"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="flex flex-col font-mono text-center shrink-0">
+                                  <span className="text-xs font-black text-slate-900 dark:text-zinc-100">{s.inicio}</span>
+                                  <span className="text-[9.5px] text-slate-400">{s.fin}</span>
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-black text-slate-900 dark:text-zinc-100 truncate">
+                                    {s.pelicula}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    {s.sessionFormat && (
+                                      <span className="text-[9.5px] font-bold text-purple-600 dark:text-purple-400">
+                                        {s.sessionFormat}
+                                      </span>
+                                    )}
+                                    {s.language && (
+                                      <span className="text-[9.5px] text-slate-400">· {s.language}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                {occ > 0 && (
+                                  <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md ${
+                                    occ >= 80 ? 'bg-rose-500/10 text-rose-600 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                                  }`}>
+                                    {occ}%
+                                  </span>
+                                )}
+                                <ChevronRight size={14} className="text-slate-400" />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -3159,7 +4050,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
-        <ScrollView ref={verticalScrollRef} style={styles.verticalScrollView} bounces={false}>
+        {isMobile ? (
+          renderMobileProgrammingView()
+        ) : (
+          <ScrollView ref={verticalScrollRef} style={styles.verticalScrollView} bounces={false}>
 
           {/* Days Tabs Selection & Controls Toolbar */}
           <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-2.5 mb-3 flex flex-col gap-2.5">
@@ -3685,8 +4579,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           <Text style={styles.downloadHtmlButtonText}>VER PROGRAMACIÓN SEMANAL (HTML)</Text>
         </TouchableOpacity>
       )}
-    </ScrollView>
-  </View>
+          </ScrollView>
+        )}
+      </View>
 
       {/* Modern Show Details Dialog */}
       {selectedShow && (
