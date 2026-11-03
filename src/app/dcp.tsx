@@ -751,6 +751,16 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
                           <span className="rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 font-medium text-slate-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
                             {item.ubicacion}
                           </span>
+                          {item.sub !== false && (
+                            <span className="rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-300">
+                              SUB
+                            </span>
+                          )}
+                          {item.cas !== false && (
+                            <span className="rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-300">
+                              CAS
+                            </span>
+                          )}
                         </div>
 
                         <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-1.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950">
