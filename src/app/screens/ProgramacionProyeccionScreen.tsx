@@ -335,7 +335,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [adjustShowtimes, setAdjustShowtimes] = useState<boolean>(false);
 
   // Dedicated Mobile View State
-  const [mobileViewMode, setMobileViewMode] = useState<"timeline" | "movies" | "rooms">("timeline");
+  const [mobileViewMode, setMobileViewMode] = useState<"timeline" | "movies" | "rooms">("rooms");
   const [mobileSearchQuery, setMobileSearchQuery] = useState<string>("");
   const [mobileFilter, setMobileFilter] = useState<"all" | "playing" | "upcoming" | "3d" | "events">("all");
 
