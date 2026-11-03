@@ -3691,7 +3691,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       {/* Modern Show Details Dialog */}
       {selectedShow && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 lg:pl-[76px] lg:pt-[76px] bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150"
+          className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center p-2.5 pt-[78px] sm:p-4 lg:pl-[76px] lg:pt-[76px] bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCloseModal();
@@ -3699,7 +3699,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           }}
         >
           <div
-            className="relative w-full max-w-[920px] xl:max-w-[960px] max-h-[92dvh] sm:max-h-[90dvh] lg:max-h-[620px] flex flex-col rounded-2xl sm:rounded-3xl bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+            className="relative w-full max-w-[920px] xl:max-w-[960px] max-h-[calc(100dvh-92px)] sm:max-h-[90dvh] lg:max-h-[620px] flex flex-col rounded-2xl sm:rounded-3xl bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 sm:px-6 py-2.5 sm:py-3 border-b border-slate-100 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm shrink-0">
@@ -3722,8 +3722,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               <button
                 type="button"
                 onClick={handleCloseModal}
-                className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-600 dark:text-zinc-200 transition-colors cursor-pointer shrink-0 shadow-2xs"
                 title="Cerrar (Esc)"
+                aria-label="Cerrar detalle"
               >
                 <X className="w-4 h-4" />
               </button>
