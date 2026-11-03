@@ -3040,83 +3040,14 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         </div>
       ) : null}
 
-      {/* Week Selector Bar (if in API mode) */}
-      {useApiData && availableWeeks.length > 1 && (() => {
-        const currentIndex = availableWeeks.indexOf(selectedWeekStart);
-        const canGoPrev = currentIndex > 0;
-        const canGoNext = currentIndex < availableWeeks.length - 1;
-        const currentWeek = getMovieWeekStartForNow();
-        const isCurrent = selectedWeekStart === currentWeek;
-        
-        let label = formatWeekRange(selectedWeekStart);
-        if (isCurrent) {
-          label += " (Actual)";
-        } else if (selectedWeekStart > currentWeek) {
-          label += " (Preventa)";
-        } else if (selectedWeekStart < currentWeek) {
-          label += " (Pasada)";
-        }
-        
-        return (
-          <div className="flex items-center justify-center gap-2 mb-3">
-            <button
-              type="button"
-              disabled={!canGoPrev}
-              onClick={() => setSelectedWeekStart(availableWeeks[currentIndex - 1])}
-              className="p-1.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors shadow-xs cursor-pointer"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            
-            <div className="px-3.5 py-1.5 rounded-xl border border-slate-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs min-w-[210px] text-center">
-              <span className="text-xs font-black text-slate-800 dark:text-zinc-200">
-                {label}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              disabled={!canGoNext}
-              onClick={() => setSelectedWeekStart(availableWeeks[currentIndex + 1])}
-              className="p-1.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors shadow-xs cursor-pointer"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        );
-      })()}
-
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
         <ScrollView ref={verticalScrollRef} style={styles.verticalScrollView} bounces={false}>
 
           {/* Days Tabs Selection & Controls Toolbar */}
           <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-2.5 mb-3 flex flex-col gap-2.5">
-            {/* Days Chips (centered) */}
-            <div className="overflow-x-auto pb-0.5">
-              <div className="mx-auto flex w-max items-center gap-1.5">
-              {DAYS_OF_WEEK.map((day) => {
-                const isActive = selectedDay === day.key;
-                return (
-                  <button
-                    key={day.key}
-                    type="button"
-                    onClick={() => setSelectedDay(day.key)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                      isActive
-                        ? "bg-rose-600 text-white shadow-xs"
-                        : "bg-slate-100 dark:bg-zinc-950 text-slate-700 dark:text-zinc-400 hover:bg-slate-200/70 dark:hover:bg-zinc-800 border border-slate-200/60 dark:border-zinc-800"
-                    }`}
-                  >
-                    {day.label}
-                  </button>
-                );
-              })}
-              </div>
-            </div>
-
-            {/* Controls (centered row below days) */}
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-2.5 border-t border-slate-100 dark:border-zinc-800">
+            {/* Controls (centered row above days & week changer) */}
+            <div className="flex flex-wrap items-center justify-center gap-2">
               {/* Ajustar horarios de salida toggle */}
               <div className="flex items-center gap-1">
                 <button
@@ -3197,6 +3128,80 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   <span>{syncing ? "Sincronizando..." : "Sincronizar"}</span>
                 </button>
               )}
+            </div>
+
+            {/* Days Chips Row (centered) & Week Changer (on right) */}
+            <div className="relative w-full flex flex-col xl:flex-row items-center justify-center gap-2 pt-2.5 border-t border-slate-100 dark:border-zinc-800">
+              {/* Days Chips (centered) */}
+              <div className="overflow-x-auto max-w-full pb-0.5">
+                <div className="mx-auto flex w-max items-center gap-1.5">
+                  {DAYS_OF_WEEK.map((day) => {
+                    const isActive = selectedDay === day.key;
+                    return (
+                      <button
+                        key={day.key}
+                        type="button"
+                        onClick={() => setSelectedDay(day.key)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                          isActive
+                            ? "bg-rose-600 text-white shadow-xs"
+                            : "bg-slate-100 dark:bg-zinc-950 text-slate-700 dark:text-zinc-400 hover:bg-slate-200/70 dark:hover:bg-zinc-800 border border-slate-200/60 dark:border-zinc-800"
+                        }`}
+                      >
+                        {day.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Week Changer (right aligned without affecting center of days) */}
+              {useApiData && availableWeeks.length > 1 && (() => {
+                const currentIndex = availableWeeks.indexOf(selectedWeekStart);
+                const canGoPrev = currentIndex > 0;
+                const canGoNext = currentIndex < availableWeeks.length - 1;
+                const currentWeek = getMovieWeekStartForNow();
+                const isCurrent = selectedWeekStart === currentWeek;
+                
+                let label = formatWeekRange(selectedWeekStart);
+                if (isCurrent) {
+                  label += " (Actual)";
+                } else if (selectedWeekStart > currentWeek) {
+                  label += " (Preventa)";
+                } else if (selectedWeekStart < currentWeek) {
+                  label += " (Pasada)";
+                }
+
+                return (
+                  <div className="xl:absolute xl:right-0 flex items-center justify-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={!canGoPrev}
+                      onClick={() => setSelectedWeekStart(availableWeeks[currentIndex - 1])}
+                      className="p-1.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-950 text-slate-700 dark:text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200/70 dark:hover:bg-zinc-800 transition-colors shadow-xs cursor-pointer"
+                      title="Semana anterior"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    
+                    <div className="px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-950 shadow-xs min-w-[190px] text-center">
+                      <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                        {label}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={!canGoNext}
+                      onClick={() => setSelectedWeekStart(availableWeeks[currentIndex + 1])}
+                      className="p-1.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-950 text-slate-700 dark:text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200/70 dark:hover:bg-zinc-800 transition-colors shadow-xs cursor-pointer"
+                      title="Semana siguiente"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
