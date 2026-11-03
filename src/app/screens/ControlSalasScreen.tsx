@@ -13,6 +13,16 @@ import {
   Switch,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  Armchair,
+  Download,
+  FileText,
+  RotateCcw,
+  Sparkles,
+  Building2,
+  CheckCircle2,
+  AlertTriangle,
+} from "lucide-react";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system";
@@ -2137,53 +2147,58 @@ export default function ControlSalasScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <div className="w-full max-w-[1440px] mx-auto pb-20">
       {/* Rooms Tab Selector */}
-      <View style={styles.tabsCard}>
-        <View style={styles.cardHeaderRow}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <Text style={styles.cardHeaderTitle}>Control de Estado Físico de Salas</Text>
-            <View style={styles.complexStatBadge}>
-              <Text style={styles.complexStatBadgeText}>
-                Promedio General:{" "}
-                <Text style={{ color: Number(complexStats.pct) > 0 ? COLORS.danger : COLORS.success, fontWeight: "800" }}>
-                  {complexStats.pct}%
-                </Text>{" "}
-                rotas ({complexStats.totalDamaged}/{complexStats.totalCap})
-              </Text>
-            </View>
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-3 sm:p-4 mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-500/15 border border-rose-100 dark:border-rose-500/30 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
+              <Armchair size={17} strokeWidth={2.2} />
+            </div>
+            <div>
+              <h2 className="text-sm font-black text-slate-900 dark:text-zinc-100 tracking-tight">
+                Control de Estado Físico de Salas
+              </h2>
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-zinc-950 text-slate-700 dark:text-zinc-300 border border-slate-200/80 dark:border-zinc-800">
+              Promedio General:{" "}
+              <span className={`font-black ${Number(complexStats.pct) > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                {complexStats.pct}%
+              </span>{" "}
+              rotas ({complexStats.totalDamaged}/{complexStats.totalCap})
+            </div>
+          </div>
 
-            {/* Botón temporal para descargar el mapeo .md de todas las salas */}
-            <TouchableOpacity
-              style={styles.downloadMappingHeaderBtn}
-              onPress={handleDownloadSalasMapping}
-              activeOpacity={0.8}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadSalasMapping}
               disabled={downloadingMapping}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50"
             >
               {downloadingMapping ? (
-                <ActivityIndicator size="small" color="#FFF" style={{ marginRight: 6 }} />
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <MaterialCommunityIcons name="file-download-outline" size={16} color="#FFF" style={{ marginRight: 6 }} />
+                <Download size={13} />
               )}
-              <Text style={styles.downloadMappingHeaderBtnText}>
-                {downloadingMapping ? "Descargando..." : "Descargar Mapeo (.md)"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          
-          {isLayoutEditorMode && (
-            <TouchableOpacity
-              style={styles.adminMigrationBtn}
-              onPress={handleMigrateAllDefaultLayouts}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons name="database-import" size={16} color={COLORS.primary} style={{ marginRight: 4 }} />
-              <Text style={styles.adminMigrationBtnText}>Guardar Plantillas por Defecto</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+              <span>{downloadingMapping ? "Descargando..." : "Descargar Mapeo (.md)"}</span>
+            </button>
 
-        <View style={styles.roomsGridContainer}>
+            {isLayoutEditorMode && (
+              <button
+                type="button"
+                onClick={handleMigrateAllDefaultLayouts}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 transition-colors cursor-pointer"
+              >
+                <Sparkles size={13} />
+                Guardar Plantillas
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Room selection pills */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2 mt-3.5">
           {salasInfoList.map((sala) => {
             const isSel = selectedSala === sala.id;
             const salaKey = String(sala.id);
@@ -2191,52 +2206,49 @@ export default function ControlSalasScreen() {
             const generalRaw = report?.generalIssues?.[salaKey];
             const generalCount = Array.isArray(generalRaw)
               ? generalRaw.filter(Boolean).length
-              : (generalRaw ? 1 : 0);
+              : generalRaw ? 1 : 0;
             const totalIncidents = damagedCount + generalCount;
             const salaCapacity = getSalaCapacity(sala.id);
             const damagedPct = salaCapacity > 0 ? (damagedCount / salaCapacity) * 100 : 0;
             const formattedPct = damagedPct.toFixed(1);
 
             return (
-              <TouchableOpacity
+              <button
                 key={sala.id}
-                style={[styles.salaTabBtn, isSel && styles.salaTabBtnActive]}
-                onPress={() => {
+                type="button"
+                onClick={() => {
                   setSelectedSala(sala.id);
-                  setIsLayoutEditorMode(false); // reset layout editor on room toggle
+                  setIsLayoutEditorMode(false);
                 }}
-                activeOpacity={0.7}
+                className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                  isSel
+                    ? "bg-rose-50 dark:bg-rose-500/15 border-rose-500 dark:border-rose-500 text-rose-700 dark:text-rose-300 ring-2 ring-rose-500/20 shadow-xs"
+                    : "bg-slate-50 dark:bg-zinc-950/60 border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-400 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-100 dark:hover:bg-zinc-900"
+                }`}
               >
-                <View style={styles.salaTabContent}>
-                  <View style={styles.salaTabTopRow}>
-                    <Text style={[styles.salaTabText, isSel && styles.salaTabTextActive]}>
-                      {sala.name}
-                    </Text>
-                    {totalIncidents > 0 && (
-                      <View style={styles.badgeContainer}>
-                        <Text style={styles.badgeText}>{totalIncidents}</Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={styles.salaTabSubRow}>
-                    <Text
-                      style={[
-                        styles.salaTabPctText,
-                        damagedCount > 0 ? styles.salaTabPctTextDanger : (isSel ? styles.salaTabPctTextActive : styles.salaTabPctTextNormal),
-                      ]}
-                    >
-                      {formattedPct}% rotas
-                    </Text>
-                    <Text style={[styles.salaTabCapText, isSel && styles.salaTabCapTextActive]}>
-                      ({damagedCount}/{salaCapacity})
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
+                <div className="flex items-center justify-between gap-1">
+                  <span className={`text-xs font-black tracking-tight ${isSel ? "text-rose-600 dark:text-rose-400" : "text-slate-800 dark:text-zinc-200"}`}>
+                    {sala.name}
+                  </span>
+                  {totalIncidents > 0 && (
+                    <span className="inline-flex items-center justify-center px-1.5 py-0.2 rounded-full text-[9px] font-black bg-rose-600 text-white shrink-0">
+                      {totalIncidents}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between text-[10px] font-semibold mt-1">
+                  <span className={damagedCount > 0 ? "text-rose-600 dark:text-rose-400 font-bold" : isSel ? "text-rose-600/80 dark:text-rose-400/80" : "text-slate-400 dark:text-zinc-500"}>
+                    {formattedPct}%
+                  </span>
+                  <span className="text-slate-400 dark:text-zinc-500 text-[9px]">
+                    ({damagedCount}/{salaCapacity})
+                  </span>
+                </div>
+              </button>
             );
           })}
-        </View>
-      </View>
+        </div>
+      </div>
 
       {/* Main Panel grid */}
       {loading ? (
@@ -2247,41 +2259,53 @@ export default function ControlSalasScreen() {
       ) : (
         <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
           {/* Header info */}
-          <View style={styles.roomStatusRow}>
-            <View style={styles.roomStatusCard}>
-              <Text style={styles.statusLabel}>SALA SELECCIONADA</Text>
-              <Text style={styles.statusValue}>Sala {selectedSala}</Text>
-            </View>
-            <View style={styles.roomStatusCard}>
-              <Text style={styles.statusLabel}>CAPACIDAD TOTAL</Text>
-              <Text style={styles.statusValue}>{selectedSalaCapacity} butacas</Text>
-            </View>
-            <View style={styles.roomStatusCard}>
-              <Text style={styles.statusLabel}>BUTACAS DAÑADAS</Text>
-              <Text style={[styles.statusValue, selectedSalaIssues.length > 0 && { color: COLORS.danger }]}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 mb-4">
+            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-3 text-center">
+              <span className="block text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-1">
+                Sala Seleccionada
+              </span>
+              <span className="text-base font-black text-slate-900 dark:text-zinc-100">
+                Sala {selectedSala}
+              </span>
+            </div>
+
+            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-3 text-center">
+              <span className="block text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-1">
+                Capacidad Total
+              </span>
+              <span className="text-base font-black text-slate-900 dark:text-zinc-100">
+                {selectedSalaCapacity} butacas
+              </span>
+            </div>
+
+            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-3 text-center">
+              <span className="block text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-1">
+                Butacas Dañadas
+              </span>
+              <span className={`text-base font-black ${selectedSalaIssues.length > 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-zinc-100"}`}>
                 {selectedSalaIssues.length}
-                <Text style={{ fontSize: 11, fontWeight: "600", color: COLORS.muted }}> / {selectedSalaCapacity}</Text>
-              </Text>
-            </View>
-            <View style={styles.roomStatusCard}>
-              <Text style={styles.statusLabel}>% BUTACAS ROTAS</Text>
-              <Text style={[styles.statusValue, selectedSalaIssues.length > 0 && { color: COLORS.danger }]}>
+                <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500"> / {selectedSalaCapacity}</span>
+              </span>
+            </div>
+
+            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-3 text-center">
+              <span className="block text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-1">
+                % Butacas Rotas
+              </span>
+              <span className={`text-base font-black ${selectedSalaIssues.length > 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-zinc-100"}`}>
                 {selectedSalaDamagedPct}%
-              </Text>
-            </View>
-            <View style={styles.roomStatusCard}>
-              <Text style={styles.statusLabel}>OBSERVACIONES</Text>
-              <Text style={[styles.statusValue, generalIssuesList.length > 0 && { color: COLORS.warning }]}>
+              </span>
+            </div>
+
+            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-3 text-center">
+              <span className="block text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-1">
+                Observaciones
+              </span>
+              <span className={`text-base font-black ${generalIssuesList.length > 0 ? "text-amber-600 dark:text-amber-400" : "text-slate-900 dark:text-zinc-100"}`}>
                 {generalIssuesList.length}
-              </Text>
-            </View>
-            {saving && (
-              <View style={styles.syncingCard}>
-                <ActivityIndicator size="small" color={COLORS.primary} style={{ marginRight: 6 }} />
-                <Text style={styles.syncingText}>Sincronizando...</Text>
-              </View>
-            )}
-          </View>
+              </span>
+            </div>
+          </div>
 
           {renderSeatingGrid()}
 
@@ -2571,33 +2595,39 @@ export default function ControlSalasScreen() {
           </View>
 
           {/* Action Buttons Footer */}
-          <View style={styles.actionButtonsRow}>
-            <TouchableOpacity style={styles.pdfBtn} onPress={handleExportPdf} activeOpacity={0.85}>
-              <MaterialCommunityIcons name="file-pdf-box" size={22} color="#FFF" style={{ marginRight: 8 }} />
-              <Text style={styles.pdfBtnText}>Generar Reporte PDF</Text>
-            </TouchableOpacity>
+          <div className="flex flex-wrap items-center gap-2.5 mt-4 pt-2">
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              className="py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs tracking-wider uppercase transition-colors shadow-xs flex items-center gap-2 cursor-pointer"
+            >
+              <FileText size={16} />
+              Generar Reporte PDF
+            </button>
 
-            <TouchableOpacity
-              style={styles.downloadMappingFooterBtn}
-              onPress={handleDownloadSalasMapping}
-              activeOpacity={0.85}
+            <button
+              type="button"
+              onClick={handleDownloadSalasMapping}
               disabled={downloadingMapping}
+              className="py-2.5 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs tracking-wider uppercase transition-colors shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
               {downloadingMapping ? (
-                <ActivityIndicator size="small" color="#FFF" style={{ marginRight: 8 }} />
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <MaterialCommunityIcons name="file-download-outline" size={22} color="#FFF" style={{ marginRight: 8 }} />
+                <Download size={16} />
               )}
-              <Text style={styles.downloadMappingFooterBtnText}>
-                {downloadingMapping ? "Descargando..." : "Descargar Mapeo (.md)"}
-              </Text>
-            </TouchableOpacity>
+              {downloadingMapping ? "Descargando..." : "Descargar Mapeo (.md)"}
+            </button>
 
-            <TouchableOpacity style={styles.clearBtn} onPress={handleClearActiveReport} activeOpacity={0.8}>
-              <MaterialCommunityIcons name="refresh" size={20} color={COLORS.danger} style={{ marginRight: 6 }} />
-              <Text style={styles.clearBtnText}>Reiniciar Todo</Text>
-            </TouchableOpacity>
-          </View>
+            <button
+              type="button"
+              onClick={handleClearActiveReport}
+              className="py-2.5 px-4 rounded-xl border border-rose-200 dark:border-rose-500/30 text-rose-600 dark:text-rose-400 bg-rose-50/50 dark:bg-rose-950/20 hover:bg-rose-100 font-bold text-xs tracking-wider uppercase transition-colors shadow-xs flex items-center gap-2 cursor-pointer"
+            >
+              <RotateCcw size={15} />
+              Reiniciar Todo
+            </button>
+          </div>
         </ScrollView>
       )}
 
@@ -2884,7 +2914,7 @@ export default function ControlSalasScreen() {
         )}
       </Modal>
 
-    </View>
+    </div>
   );
 }
 

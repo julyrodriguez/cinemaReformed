@@ -13,6 +13,22 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  Plus,
+  Printer,
+  Save,
+  Image as ImageIcon,
+  Layers,
+  Lock,
+  Unlock,
+  Grid,
+  CheckSquare,
+  Search,
+  Trash2,
+  X,
+  Sliders,
+  Check,
+} from "lucide-react";
 import * as Print from "expo-print";
 import { doc, getDoc, setDoc, onSnapshot, collection, getDocs } from "@/lib/dbService";
 import { httpsCallable } from "@/lib/dbService";
@@ -1529,60 +1545,68 @@ export default function MapaBannersScreen() {
     <>
       {/* ELEMENT GENERATOR PALETTE */}
       {!isMobile && (
-        <View style={s.paletteCard}>
-          <Text style={s.paletteTitle}>Añadir Elemento</Text>
-          <View style={s.paletteButtons}>
+        <div className="w-[190px] bg-white dark:bg-zinc-900 border-r border-slate-200/80 dark:border-zinc-800 p-3 space-y-2.5 shrink-0">
+          <span className="block text-[11px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
+            Añadir Elemento
+          </span>
+          <div className="space-y-1.5">
             {Object.entries(ELEMENT_TYPE_META).map(([key, meta]) => (
-              <Pressable
+              <button
                 key={key}
-                style={[s.paletteBtn, { borderLeftColor: meta.color }]}
-                onPress={() => handleAddElement(key as any)}
+                type="button"
+                onClick={() => handleAddElement(key as any)}
+                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl border border-slate-200/70 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950/60 hover:bg-slate-100 dark:hover:bg-zinc-800/60 transition-all text-left cursor-pointer"
+                style={{ borderLeftWidth: "3px", borderLeftColor: meta.color }}
               >
-                <MaterialCommunityIcons name={meta.icon} size={18} color={meta.color} />
-                <Text style={s.paletteBtnText}>{meta.label}</Text>
-              </Pressable>
+                <MaterialCommunityIcons name={meta.icon} size={16} color={meta.color} />
+                <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                  {meta.label}
+                </span>
+              </button>
             ))}
-          </View>
-        </View>
+          </div>
+        </div>
       )}
 
       {/* DRAG AND DROP CANVAS */}
       <View style={s.canvasContainer}>
-        <View style={s.canvasHeader}>
-          <Text style={s.canvasHelpText}>
+        <div className="bg-white dark:bg-zinc-900 border-b border-slate-200/80 dark:border-zinc-800 p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span className="text-[11px] font-medium text-slate-500 dark:text-zinc-400">
             {isMobile
               ? "Tocá los elementos para cambiar su póster. Mové el fondo del plano para desplazarte."
               : "Arrastrá los elementos para posicionarlos. Mové el fondo del plano para desplazarte."}
-          </Text>
+          </span>
           
-          <View style={s.canvasControlsRow}>
+          <div className="flex flex-wrap items-center gap-2">
             {/* Zoom width controller */}
-            <View style={s.zoomSliderContainer}>
-              <Text style={s.zoomLabel}>Ancho: {canvasWidthScale}%</Text>
-              <Pressable
-                style={s.zoomBtn}
-                onPress={() => {
-                  setCanvasWidthScale(prev => Math.max(100, prev - 25));
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2 py-1 rounded-xl text-xs font-bold">
+              <span className="text-[11px] text-slate-500 dark:text-zinc-400">Ancho: {canvasWidthScale}%</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setCanvasWidthScale((prev) => Math.max(100, prev - 25));
                   if (canvasWidthScale <= 125) {
                     setPanOffset({ x: 0, y: 0 });
                   }
                 }}
+                className="w-5 h-5 rounded-md bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 border border-slate-200 dark:border-zinc-700 flex items-center justify-center font-black cursor-pointer"
               >
-                <Text style={s.zoomBtnText}>-</Text>
-              </Pressable>
-              <Pressable
-                style={s.zoomBtn}
-                onPress={() => setCanvasWidthScale(prev => Math.min(300, prev + 25))}
+                -
+              </button>
+              <button
+                type="button"
+                onClick={() => setCanvasWidthScale((prev) => Math.min(300, prev + 25))}
+                className="w-5 h-5 rounded-md bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 border border-slate-200 dark:border-zinc-700 flex items-center justify-center font-black cursor-pointer"
               >
-                <Text style={s.zoomBtnText}>+</Text>
-              </Pressable>
-            </View>
+                +
+              </button>
+            </div>
 
             {!isMobile && (
               <>
-                <Pressable
-                  style={[s.snapToggleBtn, multiSelectMode && s.snapToggleBtnActive]}
-                  onPress={() => {
+                <button
+                  type="button"
+                  onClick={() => {
                     setMultiSelectMode(!multiSelectMode);
                     if (multiSelectMode) {
                       setSelectedElementIds([]);
@@ -1590,79 +1614,50 @@ export default function MapaBannersScreen() {
                       setSelectedElementIds([selectedElementId]);
                     }
                   }}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                    multiSelectMode
+                      ? "bg-rose-600 text-white border-rose-600"
+                      : "bg-slate-100 dark:bg-zinc-950 border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400"
+                  }`}
                 >
-                  <MaterialCommunityIcons
-                    name={multiSelectMode ? "checkbox-multiple-marked" : "checkbox-multiple-blank-outline"}
-                    size={14}
-                    color={multiSelectMode ? "#fff" : COLORS.muted}
-                  />
-                  <Text style={[s.snapToggleText, multiSelectMode && { color: "#fff" }]}>
-                    Multiselección
-                  </Text>
-                </Pressable>
+                  <CheckSquare size={13} />
+                  Multiselección
+                </button>
 
-                <Pressable
-                  style={[s.snapToggleBtn, snapToGrid && s.snapToggleBtnActive]}
-                  onPress={() => setSnapToGrid(!snapToGrid)}
+                <button
+                  type="button"
+                  onClick={() => setSnapToGrid(!snapToGrid)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                    snapToGrid
+                      ? "bg-rose-600 text-white border-rose-600"
+                      : "bg-slate-100 dark:bg-zinc-950 border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400"
+                  }`}
                 >
-                  <MaterialCommunityIcons
-                    name={snapToGrid ? "grid" : "grid-off"}
-                    size={14}
-                    color={snapToGrid ? "#fff" : COLORS.muted}
-                  />
-                  <Text style={[s.snapToggleText, snapToGrid && { color: "#fff" }]}>
-                    Cuadrícula
-                  </Text>
-                </Pressable>
-
-                {/* Custom Floor Dimensions inputs */}
-                <View style={s.dimensionsContainer}>
-                  <MaterialCommunityIcons name="resize" size={14} color={COLORS.muted} />
-                  <Text style={s.dimLabel}>Ancho:</Text>
-                  <TextInput
-                    style={s.dimInput}
-                    keyboardType="numeric"
-                    value={String(activeFloor?.width || 1000)}
-                    onChangeText={(val) => {
-                      const parsed = parseInt(val, 10);
-                      if (!isNaN(parsed)) {
-                        handleUpdateFloorDimensions(activeFloor.id, parsed, activeFloor?.height || 562);
-                      }
-                    }}
-                  />
-                  <Text style={s.dimLabel}>Alto:</Text>
-                  <TextInput
-                    style={s.dimInput}
-                    keyboardType="numeric"
-                    value={String(activeFloor?.height || 562)}
-                    onChangeText={(val) => {
-                      const parsed = parseInt(val, 10);
-                      if (!isNaN(parsed)) {
-                        handleUpdateFloorDimensions(activeFloor.id, activeFloor?.width || 1000, parsed);
-                      }
-                    }}
-                  />
-                </View>
+                  <Grid size={13} />
+                  Cuadrícula
+                </button>
 
                 {/* Lock/Unlock All Banners */}
-                <Pressable
-                  style={s.lockAllBtn}
-                  onPress={() => handleLockAllElements(true)}
+                <button
+                  type="button"
+                  onClick={() => handleLockAllElements(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-100 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
                 >
-                  <MaterialCommunityIcons name="lock" size={14} color={COLORS.muted} />
-                  <Text style={s.lockAllText}>Fijar Todos</Text>
-                </Pressable>
-                <Pressable
-                  style={s.lockAllBtn}
-                  onPress={() => handleLockAllElements(false)}
+                  <Lock size={12} />
+                  Fijar Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleLockAllElements(false)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-100 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
                 >
-                  <MaterialCommunityIcons name="lock-open-outline" size={14} color={COLORS.muted} />
-                  <Text style={s.lockAllText}>Soltar Todos</Text>
-                </Pressable>
+                  <Unlock size={12} />
+                  Soltar Todos
+                </button>
               </>
             )}
-          </View>
-        </View>
+          </div>
+        </div>
 
         <View style={s.canvasViewport}>
           <View
@@ -2715,69 +2710,101 @@ export default function MapaBannersScreen() {
       {!isMobile ? (
         <>
           {/* HEADER CONTROLS (fixed on desktop) */}
-          <View style={s.topBar}>
-            <View style={s.floorsTabsScroll}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.floorsTabs}>
-                {floors.map((floor) => {
-                  const isSelected = floor.id === selectedFloorId;
-                  return (
-                    <View key={floor.id} style={[s.floorTabWrap, isSelected && s.floorTabActive]}>
-                      {isSelected ? (
-                        <TextInput
-                          style={[s.floorTabText, s.floorTabInput]}
-                          value={floor.name}
-                          onChangeText={(val) => handleRenameFloor(floor.id, val)}
-                          placeholder="Nombre del Piso"
-                        />
-                      ) : (
-                        <Pressable onPress={() => { setSelectedFloorId(floor.id); setSelectedElementId(null); setSelectedElementIds([]); }}>
-                          <Text style={[s.floorTabText, s.floorTabInactiveText]}>{floor.name}</Text>
-                        </Pressable>
-                      )}
-                      {isSelected && (
-                        <Pressable style={s.floorDeleteBtn} onPress={() => handleDeleteFloor(floor.id)}>
-                          <MaterialCommunityIcons name="close-circle" size={16} color={COLORS.danger} />
-                        </Pressable>
-                      )}
-                    </View>
-                  );
-                })}
-                <Pressable style={s.addFloorBtn} onPress={handleAddFloor}>
-                  <MaterialCommunityIcons name="plus" size={16} color={COLORS.primary} />
-                  <Text style={s.addFloorText}>Piso</Text>
-                </Pressable>
-              </ScrollView>
-            </View>
+          <div className="bg-white dark:bg-zinc-900 border-b border-slate-200/80 dark:border-zinc-800 p-3 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+            <div className="flex-1 flex items-center gap-2 overflow-x-auto min-w-[240px]">
+              {floors.map((floor) => {
+                const isSelected = floor.id === selectedFloorId;
+                return (
+                  <div
+                    key={floor.id}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+                      isSelected
+                        ? "bg-rose-50 dark:bg-rose-500/15 border-rose-500 text-rose-700 dark:text-rose-300 ring-1 ring-rose-500/30"
+                        : "bg-slate-100 dark:bg-zinc-950 border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-400 hover:border-slate-300 dark:hover:border-zinc-700"
+                    }`}
+                  >
+                    {isSelected ? (
+                      <input
+                        className="bg-transparent border-none outline-none font-bold text-xs text-rose-600 dark:text-rose-400 w-24"
+                        value={floor.name}
+                        onChange={(e) => handleRenameFloor(floor.id, e.target.value)}
+                        placeholder="Nombre del Piso"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedFloorId(floor.id);
+                          setSelectedElementId(null);
+                          setSelectedElementIds([]);
+                        }}
+                        className="cursor-pointer"
+                      >
+                        {floor.name}
+                      </button>
+                    )}
+                    {isSelected && floors.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteFloor(floor.id)}
+                        className="text-rose-500 hover:text-rose-700 p-0.5 rounded-full"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
 
-            <View style={s.actionsRow}>
-              <Pressable style={[s.iconBtn, { backgroundColor: "#0284c7" }]} onPress={handleExportPNG}>
-                <MaterialCommunityIcons name="image-outline" size={18} color="#fff" />
-                <Text style={s.btnText}>Exportar PNG</Text>
-              </Pressable>
+              <button
+                type="button"
+                onClick={handleAddFloor}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-dashed border-rose-400 dark:border-rose-500/40 text-rose-600 dark:text-rose-400 text-xs font-bold hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors cursor-pointer"
+              >
+                <Plus size={13} />
+                Piso
+              </button>
+            </div>
 
-              <Pressable style={[s.iconBtn, printing && s.btnDisabled]} onPress={handlePrint} disabled={printing}>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExportPNG}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                <ImageIcon size={14} />
+                Exportar PNG
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePrint}
+                disabled={printing}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 dark:bg-zinc-800 hover:bg-slate-900 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
                 {printing ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 ) : (
-                  <>
-                    <MaterialCommunityIcons name="printer" size={18} color="#fff" />
-                    <Text style={s.btnText}>Imprimir / PDF</Text>
-                  </>
+                  <Printer size={14} />
                 )}
-              </Pressable>
+                Imprimir / PDF
+              </button>
 
-              <Pressable style={[s.iconBtn, s.saveBtn, saving && s.btnDisabled]} onPress={() => handleSaveChanges()} disabled={saving}>
+              <button
+                type="button"
+                onClick={() => handleSaveChanges()}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
                 {saving ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 ) : (
-                  <>
-                    <MaterialCommunityIcons name="content-save-outline" size={18} color="#fff" />
-                    <Text style={s.btnText}>Guardar</Text>
-                  </>
+                  <Save size={14} />
                 )}
-              </Pressable>
-            </View>
-          </View>
+                Guardar
+              </button>
+            </div>
+          </div>
 
           <View style={s.mainWorkspace}>
             {workspaceContent}
@@ -2789,70 +2816,84 @@ export default function MapaBannersScreen() {
           contentContainerStyle={{ paddingBottom: 40 }}
           scrollEnabled={!isDraggingOrPanning}
         >
-          {/* HEADER CONTROLS (inside ScrollView on mobile, so it scrolls away) */}
-          <View style={[s.topBar, { flexDirection: "column", alignItems: "stretch", gap: 10, borderBottomWidth: 0 }]}>
-            <View style={s.floorsTabsScroll}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.floorsTabs}>
-                {floors.map((floor) => {
-                  const isSelected = floor.id === selectedFloorId;
-                  return (
-                    <View key={floor.id} style={[s.floorTabWrap, isSelected && s.floorTabActive]}>
-                      {isSelected ? (
-                        <TextInput
-                          style={[s.floorTabText, s.floorTabInput]}
-                          value={floor.name}
-                          onChangeText={(val) => handleRenameFloor(floor.id, val)}
-                          placeholder="Nombre del Piso"
-                        />
-                      ) : (
-                        <Pressable onPress={() => { setSelectedFloorId(floor.id); setSelectedElementId(null); setSelectedElementIds([]); }}>
-                          <Text style={[s.floorTabText, s.floorTabInactiveText]}>{floor.name}</Text>
-                        </Pressable>
-                      )}
-                      {isSelected && (
-                        <Pressable style={s.floorDeleteBtn} onPress={() => handleDeleteFloor(floor.id)}>
-                          <MaterialCommunityIcons name="close-circle" size={16} color={COLORS.danger} />
-                        </Pressable>
-                      )}
-                    </View>
-                  );
-                })}
-                <Pressable style={s.addFloorBtn} onPress={handleAddFloor}>
-                  <MaterialCommunityIcons name="plus" size={16} color={COLORS.primary} />
-                  <Text style={s.addFloorText}>Piso</Text>
-                </Pressable>
-              </ScrollView>
-            </View>
+          {/* HEADER CONTROLS (inside ScrollView on mobile) */}
+          <div className="bg-white dark:bg-zinc-900 border-b border-slate-200/80 dark:border-zinc-800 p-3 flex flex-col gap-3 shadow-xs">
+            <div className="flex items-center gap-2 overflow-x-auto">
+              {floors.map((floor) => {
+                const isSelected = floor.id === selectedFloorId;
+                return (
+                  <div
+                    key={floor.id}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+                      isSelected
+                        ? "bg-rose-50 dark:bg-rose-500/15 border-rose-500 text-rose-700 dark:text-rose-300 ring-1 ring-rose-500/30"
+                        : "bg-slate-100 dark:bg-zinc-950 border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-400"
+                    }`}
+                  >
+                    {isSelected ? (
+                      <input
+                        className="bg-transparent border-none outline-none font-bold text-xs text-rose-600 dark:text-rose-400 w-24"
+                        value={floor.name}
+                        onChange={(e) => handleRenameFloor(floor.id, e.target.value)}
+                        placeholder="Nombre del Piso"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedFloorId(floor.id);
+                          setSelectedElementId(null);
+                          setSelectedElementIds([]);
+                        }}
+                      >
+                        {floor.name}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
 
-            <View style={s.actionsRow}>
-              <Pressable style={[s.iconBtn, { backgroundColor: "#0284c7" }]} onPress={handleExportPNG}>
-                <MaterialCommunityIcons name="image-outline" size={18} color="#fff" />
-                <Text style={s.btnText}>Exportar PNG</Text>
-              </Pressable>
+              <button
+                type="button"
+                onClick={handleAddFloor}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-dashed border-rose-400 text-rose-600 dark:text-rose-400 text-xs font-bold"
+              >
+                <Plus size={13} />
+                Piso
+              </button>
+            </div>
 
-              <Pressable style={[s.iconBtn, printing && s.btnDisabled]} onPress={handlePrint} disabled={printing}>
-                {printing ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <MaterialCommunityIcons name="printer" size={18} color="#fff" />
-                    <Text style={s.btnText}>Imprimir / PDF</Text>
-                  </>
-                )}
-              </Pressable>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExportPNG}
+                className="flex-1 py-2 px-3 rounded-xl bg-sky-600 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+              >
+                <ImageIcon size={14} />
+                PNG
+              </button>
 
-              <Pressable style={[s.iconBtn, s.saveBtn, saving && s.btnDisabled]} onPress={() => handleSaveChanges()} disabled={saving}>
-                {saving ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <MaterialCommunityIcons name="content-save-outline" size={18} color="#fff" />
-                    <Text style={s.btnText}>Guardar</Text>
-                  </>
-                )}
-              </Pressable>
-            </View>
-          </View>
+              <button
+                type="button"
+                onClick={handlePrint}
+                disabled={printing}
+                className="flex-1 py-2 px-3 rounded-xl bg-slate-800 dark:bg-zinc-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <Printer size={14} />
+                PDF
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSaveChanges()}
+                disabled={saving}
+                className="flex-1 py-2 px-3 rounded-xl bg-rose-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <Save size={14} />
+                Guardar
+              </button>
+            </div>
+          </div>
 
           {/* WARNING BANNER (inside ScrollView on mobile, so it scrolls away) */}
           <View style={[s.mobileWarningBanner, { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary, marginHorizontal: 16, marginTop: 10, borderRadius: 8 }]}>

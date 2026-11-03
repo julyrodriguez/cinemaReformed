@@ -829,24 +829,24 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
   return (
     <div className="w-full max-w-[1440px] mx-auto px-3 sm:px-5 py-3 pb-24">
       {/* Top Toolbar & Segmented Navigation */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-3 mb-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-3 mb-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-500/15 border border-amber-100 dark:border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
             <Lightbulb size={18} strokeWidth={2.2} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-extrabold text-slate-900 tracking-tight">
+              <h2 className="text-sm font-extrabold text-slate-900 dark:text-zinc-100 tracking-tight">
                 Gestión de Lámparas Xenon / Láser
               </h2>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30">
                 {Object.keys(activeLampsBySala).length}/{salasCount} Activas
               </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30">
                 {backupLamps.length} Backup
               </span>
             </div>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-slate-500 dark:text-zinc-400">
               Monitoreo en vivo de proyectores, stock de repuestos, retiros y simulador de vida útil
             </p>
           </div>
@@ -854,19 +854,19 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Segmented 5-tab bar */}
-          <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl border border-slate-200/70 gap-0.5">
+          <div className="flex flex-wrap items-center bg-slate-100 dark:bg-zinc-950 p-1 rounded-xl border border-slate-200/70 dark:border-zinc-800 gap-0.5">
             <button
               type="button"
               onClick={() => setActiveTab("PROYECTORES")}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                 activeTab === "PROYECTORES"
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-500 hover:text-slate-700"
+                  ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
+                  : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
               }`}
             >
               <Projector
                 size={13}
-                className={activeTab === "PROYECTORES" ? "text-rose-600" : "text-slate-400"}
+                className={activeTab === "PROYECTORES" ? "text-rose-600 dark:text-rose-400" : "text-slate-400 dark:text-zinc-500"}
               />
               Proyectores
             </button>
@@ -876,13 +876,13 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
               onClick={() => setActiveTab("BACKUP")}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                 activeTab === "BACKUP"
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-500 hover:text-slate-700"
+                  ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
+                  : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
               }`}
             >
               <Package
                 size={13}
-                className={activeTab === "BACKUP" ? "text-indigo-600" : "text-slate-400"}
+                className={activeTab === "BACKUP" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-zinc-500"}
               />
               Stock Backup ({backupLamps.length})
             </button>
@@ -892,13 +892,13 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
               onClick={() => setActiveTab("HISTORIAL")}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                 activeTab === "HISTORIAL"
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-500 hover:text-slate-700"
+                  ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
+                  : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
               }`}
             >
               <History
                 size={13}
-                className={activeTab === "HISTORIAL" ? "text-amber-600" : "text-slate-400"}
+                className={activeTab === "HISTORIAL" ? "text-amber-600 dark:text-amber-400" : "text-slate-400 dark:text-zinc-500"}
               />
               Historial
             </button>
@@ -908,13 +908,13 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
               onClick={() => setActiveTab("MOVIMIENTOS")}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                 activeTab === "MOVIMIENTOS"
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-500 hover:text-slate-700"
+                  ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
+                  : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
               }`}
             >
               <ArrowLeftRight
                 size={13}
-                className={activeTab === "MOVIMIENTOS" ? "text-emerald-600" : "text-slate-400"}
+                className={activeTab === "MOVIMIENTOS" ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-zinc-500"}
               />
               Movimientos
             </button>
@@ -924,13 +924,13 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
               onClick={() => setActiveTab("SIMULACION")}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                 activeTab === "SIMULACION"
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-500 hover:text-slate-700"
+                  ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
+                  : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
               }`}
             >
               <Calculator
                 size={13}
-                className={activeTab === "SIMULACION" ? "text-violet-600" : "text-slate-400"}
+                className={activeTab === "SIMULACION" ? "text-violet-600 dark:text-violet-400" : "text-slate-400 dark:text-zinc-500"}
               />
               Simulación
             </button>
@@ -960,8 +960,8 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       {activeTab === "PROYECTORES" && (
         <div className="space-y-3">
           {/* Compact Info Banner */}
-          <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-blue-50/80 border border-blue-200/70 text-blue-900 text-[11px]">
-            <Info size={14} className="text-blue-600 shrink-0" />
+          <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-blue-50/80 dark:bg-blue-500/10 border border-blue-200/70 dark:border-blue-500/25 text-blue-900 dark:text-blue-200 text-[11px]">
+            <Info size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
             <span>
               Las horas de uso y restantes de las lámparas activas son reportadas y actualizadas{" "}
               <strong className="font-bold">cada viernes</strong> a través del Control Semanal.
@@ -1025,36 +1025,36 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                   style={{ animationDelay: `${Math.min(idx * 25, 250)}ms` }}
                   className={`animate-card-in hover-lift rounded-2xl border p-3.5 flex flex-col justify-between transition-all ${
                     activeShow
-                      ? "bg-white border-indigo-200/90 shadow-xs"
+                      ? "bg-white dark:bg-zinc-900 border-indigo-300 dark:border-indigo-500/45 shadow-xs"
                       : activeLamp
-                      ? "bg-white border-slate-200/90 shadow-xs"
-                      : "bg-slate-50/70 border-dashed border-slate-300"
+                      ? "bg-white dark:bg-zinc-900 border-slate-200/90 dark:border-zinc-800 shadow-xs"
+                      : "bg-slate-50/70 dark:bg-zinc-900/45 border-dashed border-slate-300 dark:border-zinc-800"
                   }`}
                 >
                   <div>
                     {/* Header Row */}
-                    <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-100">
+                    <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-100 dark:border-zinc-800/80">
                       <div className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-lg bg-slate-900 text-white text-[11px] font-black flex items-center justify-center">
+                        <span className="w-6 h-6 rounded-lg bg-slate-900 dark:bg-zinc-800 dark:border dark:border-zinc-700 text-white dark:text-zinc-100 text-[11px] font-black flex items-center justify-center">
                           {roomNum}
                         </span>
-                        <span className="text-xs font-extrabold text-slate-900">
+                        <span className="text-xs font-extrabold text-slate-900 dark:text-zinc-100">
                           Sala {roomNum}
                         </span>
                       </div>
 
                       {activeShow ? (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-ping" />
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/35">
+                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-ping" />
                           EN FUNCIÓN
                         </span>
                       ) : activeLamp ? (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/35">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
                           ACTIVA
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 text-slate-600">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400">
                           VACÍO
                         </span>
                       )}
@@ -1064,50 +1064,50 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                       <div className="space-y-2.5">
                         {/* Lamp Serial & Specs */}
                         <div>
-                          <div className="text-xs font-black text-slate-900 font-mono tracking-tight truncate">
+                          <div className="text-xs font-black text-slate-900 dark:text-zinc-100 font-mono tracking-tight truncate">
                             #{roomNum} - {activeLamp.id}
                           </div>
                           <div className="flex flex-wrap items-center gap-1 mt-1">
                             {activeLamp.marca && (
-                              <span className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200/70">
+                              <span className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 text-[10px] font-bold border border-slate-200/70 dark:border-zinc-700">
                                 {activeLamp.marca}
                               </span>
                             )}
                             {activeLamp.potencia && (
-                              <span className="px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 text-[10px] font-bold border border-rose-200/60">
+                              <span className="px-1.5 py-0.5 rounded-md bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 text-[10px] font-bold border border-rose-200/60 dark:border-rose-500/30">
                                 {activeLamp.potencia}
                               </span>
                             )}
                             {activeLamp.modelo && (
-                              <span className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200/60">
+                              <span className="px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 text-[10px] font-bold border border-blue-200/60 dark:border-blue-500/30">
                                 {activeLamp.modelo}
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-slate-400 font-medium mt-1">
+                          <div className="text-[10px] text-slate-400 dark:text-zinc-400 font-medium mt-1">
                             Instalada: {formatFirebaseDate(activeLamp.installedAt)}
                           </div>
                         </div>
 
                         {/* Hours Telemetry Boxes */}
                         <div className="grid grid-cols-2 gap-1.5">
-                          <div className="rounded-xl bg-slate-50 border border-slate-200/70 px-2.5 py-1.5">
-                            <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                          <div className="rounded-xl bg-slate-50 dark:bg-zinc-950/80 border border-slate-200/70 dark:border-zinc-800 px-2.5 py-1.5">
+                            <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-400">
                               Horas Usadas
                             </span>
-                            <span className="text-xs font-black text-slate-800">
+                            <span className="text-xs font-black text-slate-800 dark:text-zinc-100">
                               {horasUsadas} h
                             </span>
                           </div>
-                          <div className="rounded-xl bg-slate-50 border border-slate-200/70 px-2.5 py-1.5">
-                            <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                          <div className="rounded-xl bg-slate-50 dark:bg-zinc-950/80 border border-slate-200/70 dark:border-zinc-800 px-2.5 py-1.5">
+                            <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-400">
                               Restantes
                             </span>
                             <span
                               className={`text-xs font-black ${
                                 Number(horasRestantes) < 100
-                                  ? "text-rose-600"
-                                  : "text-emerald-700"
+                                  ? "text-rose-600 dark:text-rose-400"
+                                  : "text-emerald-700 dark:text-emerald-400"
                               }`}
                             >
                               {horasRestantes} h
@@ -1117,19 +1117,19 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
 
                         {/* Active Show Banner */}
                         {activeShow ? (
-                          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-indigo-50/70 border border-indigo-200/60">
-                            <PlayCircle size={14} className="text-indigo-600 shrink-0" />
+                          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-500/15 border border-indigo-200/60 dark:border-indigo-500/35">
+                            <PlayCircle size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
                             <div className="min-w-0 flex-1">
-                              <div className="text-[11px] font-bold text-indigo-950 truncate">
+                              <div className="text-[11px] font-bold text-indigo-950 dark:text-indigo-200 truncate">
                                 {activeShow.pelicula}
                               </div>
-                              <div className="text-[10px] text-indigo-600 font-medium">
+                              <div className="text-[10px] text-indigo-600 dark:text-indigo-300 font-medium">
                                 En función hasta las {activeShow.fin}
                               </div>
                             </div>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-100 text-slate-400">
+                          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-100 dark:border-zinc-800/80 text-slate-400 dark:text-zinc-500">
                             <PlayCircle size={14} className="shrink-0 opacity-60" />
                             <div className="min-w-0 flex-1">
                               <div className="text-[10px] font-semibold truncate">
@@ -1141,18 +1141,18 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                         )}
 
                         {activeLamp.notas && (
-                          <div className="text-[10px] text-slate-500 bg-amber-50/60 border border-amber-200/60 rounded-lg px-2 py-1 line-clamp-2">
+                          <div className="text-[10px] text-slate-600 dark:text-amber-200 bg-amber-50/60 dark:bg-amber-500/15 border border-amber-200/60 dark:border-amber-500/30 rounded-lg px-2 py-1 line-clamp-2">
                             💬 {activeLamp.notas}
                           </div>
                         )}
                       </div>
                     ) : (
                       <div className="py-6 flex flex-col items-center justify-center text-center">
-                        <Projector size={24} className="text-slate-300 mb-1.5" />
-                        <span className="text-xs font-bold text-slate-500">
+                        <Projector size={24} className="text-slate-300 dark:text-zinc-600 mb-1.5" />
+                        <span className="text-xs font-bold text-slate-500 dark:text-zinc-400">
                           Sin lámpara activa
                         </span>
-                        <span className="text-[10px] text-slate-400 mt-0.5">
+                        <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">
                           Asigná una unidad desde el Stock Backup
                         </span>
                       </div>
@@ -1161,7 +1161,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
 
                   {/* Footer Action Button */}
                   {!readOnly && (
-                    <div className="mt-3 pt-2.5 border-t border-slate-100">
+                    <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-zinc-800/80">
                       {activeLamp ? (
                         <button
                           type="button"
@@ -1173,7 +1173,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                             setRTipoRetiro("Fin de vida util");
                             setRetireError("");
                           }}
-                          className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-rose-600 text-white text-[11px] font-bold transition-colors cursor-pointer"
+                          className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-zinc-800 dark:border dark:border-zinc-700 hover:bg-rose-600 dark:hover:bg-rose-600 dark:hover:border-rose-500 text-white text-[11px] font-bold transition-colors cursor-pointer"
                         >
                           <LogOut size={12} />
                           Retirar Lámpara
@@ -1211,14 +1211,14 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       {activeTab === "BACKUP" && (
         <div>
           {backupLamps.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center max-w-md mx-auto my-6 animate-card-in">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-3">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-dashed border-slate-300 dark:border-zinc-800 p-12 text-center max-w-md mx-auto my-6 animate-card-in">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-3">
                 <Package size={24} />
               </div>
-              <h3 className="text-sm font-bold text-slate-800 mb-1">
+              <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-100 mb-1">
                 Stock de Backup Vacío
               </h3>
-              <p className="text-xs text-slate-500 mb-4">
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mb-4">
                 No hay lámparas de repuesto disponibles en depósito. Registrá una nueva unidad para poder instalarla en las salas.
               </p>
               {!readOnly && (
@@ -1228,7 +1228,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                     setAddError("");
                     setShowAddBackup(true);
                   }}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 active:scale-[0.97] transition-all cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-zinc-800 hover:bg-slate-800 dark:hover:bg-zinc-700 text-white text-xs font-bold active:scale-[0.97] transition-all cursor-pointer"
                 >
                   <Plus size={14} />
                   Cargar Lámpara a Backup
@@ -1241,59 +1241,59 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                 <div
                   key={lamp.id}
                   style={{ animationDelay: `${Math.min(idx * 30, 240)}ms` }}
-                  className="animate-card-in hover-lift bg-white rounded-2xl border border-slate-200/90 shadow-xs p-3.5 flex flex-col justify-between"
+                  className="animate-card-in hover-lift bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/90 dark:border-zinc-800 shadow-xs p-3.5 flex flex-col justify-between"
                 >
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-100 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
                           <Package size={15} />
                         </div>
                         <div className="min-w-0">
-                          <h4 className="text-xs font-black text-slate-900 font-mono truncate">
+                          <h4 className="text-xs font-black text-slate-900 dark:text-zinc-100 font-mono truncate">
                             {lamp.id}
                           </h4>
-                          <span className="text-[10px] text-slate-400">
+                          <span className="text-[10px] text-slate-400 dark:text-zinc-500">
                             Ingreso: {formatFirebaseDate(lamp.createdAt)}
                           </span>
                         </div>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30 shrink-0">
                         EN STOCK
                       </span>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-1.5 my-2">
                       {lamp.marca && (
-                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 text-[10px] font-bold border border-slate-200/70 dark:border-zinc-700">
                           Marca: {lamp.marca}
                         </span>
                       )}
                       {lamp.potencia && (
-                        <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 text-[10px] font-bold">
+                        <span className="px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 text-[10px] font-bold border border-rose-200/60 dark:border-rose-500/30">
                           {lamp.potencia}
                         </span>
                       )}
                       {lamp.modelo && (
-                        <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-[10px] font-bold">
+                        <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 text-[10px] font-bold border border-blue-200/60 dark:border-blue-500/30">
                           {lamp.modelo}
                         </span>
                       )}
                     </div>
 
                     {lamp.notas && (
-                      <p className="text-[11px] text-slate-600 bg-slate-50 rounded-xl px-2.5 py-1.5 border border-slate-100 mt-1">
+                      <p className="text-[11px] text-slate-600 dark:text-zinc-300 bg-slate-50 dark:bg-zinc-950 rounded-xl px-2.5 py-1.5 border border-slate-100 dark:border-zinc-800 mt-1">
                         💬 {lamp.notas}
                       </p>
                     )}
                   </div>
 
                   {!readOnly && (
-                    <div className="mt-3 pt-2.5 border-t border-slate-100 flex justify-end">
+                    <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-zinc-800 flex justify-end">
                       <button
                         type="button"
                         onClick={() => setDeleteConfirmModal(lamp)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
                       >
                         <Trash2 size={12} />
                         Eliminar de Stock
@@ -1311,10 +1311,10 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       {activeTab === "HISTORIAL" && (
         <div className="space-y-3">
           {sortedYears.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center max-w-md mx-auto my-6">
-              <History size={28} className="text-slate-300 mx-auto mb-2" />
-              <h3 className="text-sm font-bold text-slate-800 mb-1">Sin Historial</h3>
-              <p className="text-xs text-slate-500">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-dashed border-slate-300 dark:border-zinc-800 p-12 text-center max-w-md mx-auto my-6">
+              <History size={28} className="text-slate-300 dark:text-zinc-600 mx-auto mb-2" />
+              <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-100 mb-1">Sin Historial</h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400">
                 Todavía no se han retirado lámparas al archivo histórico.
               </p>
             </div>
@@ -1326,26 +1326,26 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
               return (
                 <div
                   key={year}
-                  className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden"
+                  className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/90 dark:border-zinc-800 shadow-xs overflow-hidden"
                 >
                   <button
                     type="button"
                     onClick={() => toggleYearCollapse(year)}
-                    className="w-full flex items-center justify-between px-4 py-3 bg-slate-50/70 hover:bg-slate-100/70 transition-colors cursor-pointer"
+                    className="w-full flex items-center justify-between px-4 py-3 bg-slate-50/70 dark:bg-zinc-950/60 hover:bg-slate-100/70 dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-2.5">
-                      <Calendar size={15} className="text-rose-600" />
-                      <span className="text-xs font-extrabold text-slate-900">
+                      <Calendar size={15} className="text-rose-600 dark:text-rose-400" />
+                      <span className="text-xs font-extrabold text-slate-900 dark:text-zinc-100">
                         Año {year}
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/80 text-slate-700">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/80 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
                         {lampsInYear.length} retiradas
                       </span>
                     </div>
                     {isCollapsed ? (
-                      <ChevronDown size={16} className="text-slate-400" />
+                      <ChevronDown size={16} className="text-slate-400 dark:text-zinc-500" />
                     ) : (
-                      <ChevronUp size={16} className="text-slate-400" />
+                      <ChevronUp size={16} className="text-slate-400 dark:text-zinc-500" />
                     )}
                   </button>
 
@@ -1359,20 +1359,20 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                         return (
                           <div
                             key={lamp.id}
-                            className="rounded-xl border border-slate-200/80 p-3 bg-slate-50/40 flex flex-col justify-between gap-2"
+                            className="rounded-xl border border-slate-200/80 dark:border-zinc-800 p-3 bg-slate-50/40 dark:bg-zinc-950/50 flex flex-col justify-between gap-2"
                           >
                             <div>
                               <div className="flex items-center justify-between gap-2 mb-1.5">
-                                <span className="text-xs font-black text-slate-900 font-mono">
+                                <span className="text-xs font-black text-slate-900 dark:text-zinc-100 font-mono">
                                   #{det.salaOriginal} - {lamp.id}
                                 </span>
                                 <span
                                   className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                                     isGarantia
-                                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                                      ? "bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30"
                                       : isFuera
-                                      ? "bg-rose-50 text-rose-700 border-rose-200"
-                                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                      ? "bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-500/30"
+                                      : "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30"
                                   }`}
                                 >
                                   {det.tipoRetiro}
@@ -1381,49 +1381,49 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
 
                               <div className="flex flex-wrap gap-1 mb-2">
                                 {lamp.marca && (
-                                  <span className="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-bold text-slate-600">
+                                  <span className="px-1.5 py-0.5 rounded bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-[10px] font-bold text-slate-600 dark:text-zinc-300">
                                     {lamp.marca}
                                   </span>
                                 )}
                                 {lamp.potencia && (
-                                  <span className="px-1.5 py-0.5 rounded bg-rose-50 text-[10px] font-bold text-rose-700">
+                                  <span className="px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-500/15 text-[10px] font-bold text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-500/30">
                                     {lamp.potencia}
                                   </span>
                                 )}
                                 {lamp.modelo && (
-                                  <span className="px-1.5 py-0.5 rounded bg-blue-50 text-[10px] font-bold text-blue-700">
+                                  <span className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-500/15 text-[10px] font-bold text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-500/30">
                                     {lamp.modelo}
                                   </span>
                                 )}
                               </div>
 
                               <div className="grid grid-cols-2 gap-1.5 mb-2">
-                                <div className="bg-white rounded-lg px-2 py-1 border border-slate-200/60">
-                                  <span className="block text-[9px] uppercase font-bold text-slate-400">
+                                <div className="bg-white dark:bg-zinc-900 rounded-lg px-2 py-1 border border-slate-200/60 dark:border-zinc-800">
+                                  <span className="block text-[9px] uppercase font-bold text-slate-400 dark:text-zinc-500">
                                     Usadas
                                   </span>
-                                  <span className="text-xs font-extrabold text-slate-800">
+                                  <span className="text-xs font-extrabold text-slate-800 dark:text-zinc-100">
                                     {det.horasUsadas} hs
                                   </span>
                                 </div>
-                                <div className="bg-white rounded-lg px-2 py-1 border border-slate-200/60">
-                                  <span className="block text-[9px] uppercase font-bold text-slate-400">
+                                <div className="bg-white dark:bg-zinc-900 rounded-lg px-2 py-1 border border-slate-200/60 dark:border-zinc-800">
+                                  <span className="block text-[9px] uppercase font-bold text-slate-400 dark:text-zinc-500">
                                     Restantes
                                   </span>
-                                  <span className="text-xs font-extrabold text-slate-800">
+                                  <span className="text-xs font-extrabold text-slate-800 dark:text-zinc-100">
                                     {det.horasRestantes} hs
                                   </span>
                                 </div>
                               </div>
 
                               {det.descripcion && (
-                                <p className="text-[11px] text-slate-600 bg-white rounded-lg p-2 border border-slate-200/60">
+                                <p className="text-[11px] text-slate-600 dark:text-zinc-300 bg-white dark:bg-zinc-900 rounded-lg p-2 border border-slate-200/60 dark:border-zinc-800">
                                   📝 {det.descripcion}
                                 </p>
                               )}
                             </div>
 
-                            <div className="text-[10px] text-slate-400 pt-1.5 border-t border-slate-200/60 flex justify-between">
+                            <div className="text-[10px] text-slate-400 dark:text-zinc-500 pt-1.5 border-t border-slate-200/60 dark:border-zinc-800 flex justify-between">
                               <span>In: {formatFirebaseDate(lamp.installedAt)}</span>
                               <span>Out: {formatFirebaseDate(lamp.retiredAt)}</span>
                             </div>
@@ -1443,12 +1443,12 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       {activeTab === "MOVIMIENTOS" && (
         <div className="space-y-3">
           {sortedMonths.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center max-w-md mx-auto my-6">
-              <ArrowLeftRight size={28} className="text-slate-300 mx-auto mb-2" />
-              <h3 className="text-sm font-bold text-slate-800 mb-1">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-dashed border-slate-300 dark:border-zinc-800 p-12 text-center max-w-md mx-auto my-6">
+              <ArrowLeftRight size={28} className="text-slate-300 dark:text-zinc-600 mx-auto mb-2" />
+              <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-100 mb-1">
                 Sin Movimientos Registrados
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-zinc-400">
                 Aquí aparecerán los ingresos a backup, instalaciones en proyectores y retiros.
               </p>
             </div>
@@ -1460,7 +1460,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
               return (
                 <div
                   key={mesAno}
-                  className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden"
+                  className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/90 dark:border-zinc-800 shadow-xs overflow-hidden"
                 >
                   <button
                     type="button"
@@ -1470,26 +1470,26 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                         [mesAno]: !prev[mesAno],
                       }))
                     }
-                    className="w-full flex items-center justify-between px-4 py-3 bg-slate-50/70 hover:bg-slate-100/70 transition-colors cursor-pointer"
+                    className="w-full flex items-center justify-between px-4 py-3 bg-slate-50/70 dark:bg-zinc-950/60 hover:bg-slate-100/70 dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-2.5">
-                      <Calendar size={15} className="text-indigo-600" />
-                      <span className="text-xs font-extrabold text-slate-900">
+                      <Calendar size={15} className="text-indigo-600 dark:text-indigo-400" />
+                      <span className="text-xs font-extrabold text-slate-900 dark:text-zinc-100">
                         {formatMesAno(mesAno)}
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/80 text-slate-700">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/80 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
                         {list.length} mov.
                       </span>
                     </div>
                     {isCollapsed ? (
-                      <ChevronDown size={16} className="text-slate-400" />
+                      <ChevronDown size={16} className="text-slate-400 dark:text-zinc-500" />
                     ) : (
-                      <ChevronUp size={16} className="text-slate-400" />
+                      <ChevronUp size={16} className="text-slate-400 dark:text-zinc-500" />
                     )}
                   </button>
 
                   {!isCollapsed && (
-                    <div className="divide-y divide-slate-100">
+                    <div className="divide-y divide-slate-100 dark:divide-zinc-800">
                       {list.map((mov) => {
                         const isIngreso = mov.tipo === "ingreso_backup";
                         const isInstalacion = mov.tipo === "instalacion";
@@ -1497,16 +1497,16 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                         return (
                           <div
                             key={mov.id}
-                            className="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors"
+                            className="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-zinc-800/50 transition-colors"
                           >
                             <div className="flex items-center gap-3 min-w-0">
                               <span
                                 className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold shrink-0 border ${
                                   isIngreso
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    ? "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30"
                                     : isInstalacion
-                                    ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-                                    : "bg-rose-50 text-rose-700 border-rose-200"
+                                    ? "bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-500/30"
+                                    : "bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-500/30"
                                 }`}
                               >
                                 {isIngreso
@@ -1518,29 +1518,29 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
 
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs font-black text-slate-900 font-mono">
+                                  <span className="text-xs font-black text-slate-900 dark:text-zinc-100 font-mono">
                                     {mov.lamparaId}
                                   </span>
                                   {mov.sala && (
-                                    <span className="px-1.5 py-0.5 rounded bg-slate-900 text-white text-[10px] font-bold">
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-900 dark:bg-zinc-800 text-white dark:text-zinc-100 text-[10px] font-bold">
                                       Sala {mov.sala}
                                     </span>
                                   )}
                                   {mov.potencia && (
-                                    <span className="text-[10px] font-bold text-rose-600">
+                                    <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
                                       {mov.potencia}
                                     </span>
                                   )}
                                   {mov.modelo && (
-                                    <span className="text-[10px] font-semibold text-slate-500">
+                                    <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400">
                                       {mov.modelo}
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                                <div className="text-[10px] text-slate-400 dark:text-zinc-500 flex items-center gap-2 mt-0.5">
                                   <span>{formatFirebaseDate(mov.fecha || mov.fechaISO)}</span>
                                   {mov.userName && (
-                                    <span className="inline-flex items-center gap-0.5 text-slate-500 font-medium">
+                                    <span className="inline-flex items-center gap-0.5 text-slate-500 dark:text-zinc-400 font-medium">
                                       <User size={10} /> {mov.userName}
                                     </span>
                                   )}
@@ -1553,7 +1553,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                                 type="button"
                                 disabled={revertingMovId === mov.id}
                                 onClick={() => setRevertConfirmModal(mov)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 text-[10px] font-bold transition-colors shrink-0 cursor-pointer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-rose-500/50 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-[10px] font-bold transition-colors shrink-0 cursor-pointer"
                               >
                                 <RotateCcw size={11} />
                                 Revertir
@@ -1575,24 +1575,24 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       {activeTab === "SIMULACION" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Left Panel: Parameters */}
-          <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 space-y-4">
+          <div className="lg:col-span-5 bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/90 dark:border-zinc-800 shadow-xs p-4 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">
+                <h3 className="text-xs font-extrabold text-slate-900 dark:text-zinc-100 uppercase tracking-wider">
                   Parámetros de Proyección
                 </h3>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-slate-500 dark:text-zinc-400">
                   Calculá el día exacto de recambio según el consumo diario
                 </p>
               </div>
-              <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+              <div className="flex bg-slate-100 dark:bg-zinc-950 p-0.5 rounded-xl border border-slate-200 dark:border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setSimMode("SEMANAL")}
                   className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
                     simMode === "SEMANAL"
-                      ? "bg-white text-slate-900 shadow-xs"
-                      : "text-slate-500"
+                      ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
+                      : "text-slate-500 dark:text-zinc-400"
                   }`}
                 >
                   Control Semanal
@@ -1602,8 +1602,8 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                   onClick={() => setSimMode("MANUAL")}
                   className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
                     simMode === "MANUAL"
-                      ? "bg-white text-slate-900 shadow-xs"
-                      : "text-slate-500"
+                      ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
+                      : "text-slate-500 dark:text-zinc-400"
                   }`}
                 >
                   Manual
@@ -1614,7 +1614,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
             {simMode === "SEMANAL" ? (
               <div className="space-y-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1.5">
                     1. Seleccioná la Sala a simular
                   </label>
                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
@@ -1631,14 +1631,14 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                           onClick={() => setSimSelectedRoom(room)}
                           className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
                             isSelected
-                              ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                              : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                              ? "bg-slate-900 dark:bg-zinc-800 text-white dark:text-zinc-100 border-slate-900 dark:border-zinc-700 shadow-xs"
+                              : "bg-slate-50 dark:bg-zinc-950 text-slate-700 dark:text-zinc-300 border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
                           }`}
                         >
                           <div className="text-[11px] font-extrabold">S{room}</div>
                           <div
                             className={`text-[9px] font-bold ${
-                              isSelected ? "text-emerald-300" : "text-slate-400"
+                              isSelected ? "text-emerald-300" : "text-slate-400 dark:text-zinc-500"
                             }`}
                           >
                             {rem}h
@@ -1650,7 +1650,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
                     2. Horas de uso promedio por día
                   </label>
                   <input
@@ -1659,7 +1659,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                     value={simSemanalDailyUsage}
                     onChange={(e) => setSimSemanalDailyUsage(e.target.value)}
                     placeholder="Ej: 11.5"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 focus:bg-white focus:border-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-bold text-slate-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-900 focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -1667,7 +1667,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
                       Horas Restantes
                     </label>
                     <input
@@ -1675,11 +1675,11 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                       value={simManualHours}
                       onChange={(e) => setSimManualHours(e.target.value)}
                       placeholder="Ej: 95"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 focus:bg-white focus:border-indigo-500 focus:outline-none"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-bold text-slate-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-900 focus:border-indigo-500 focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
                       Consumo Diario (hs)
                     </label>
                     <input
@@ -1688,20 +1688,20 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                       value={simManualDailyUsage}
                       onChange={(e) => setSimManualDailyUsage(e.target.value)}
                       placeholder="Ej: 12"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 focus:bg-white focus:border-indigo-500 focus:outline-none"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-bold text-slate-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-900 focus:border-indigo-500 focus:outline-none"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
                     Fecha de Inicio (YYYY-MM-DD)
                   </label>
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => adjustManualDate(-1)}
-                      className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                      className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 cursor-pointer"
                     >
                       <Minus size={13} />
                     </button>
@@ -1709,12 +1709,12 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                       type="date"
                       value={simManualStartDate}
                       onChange={(e) => setSimManualStartDate(e.target.value)}
-                      className="flex-1 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 text-center"
+                      className="flex-1 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-bold text-slate-900 dark:text-zinc-100 text-center"
                     />
                     <button
                       type="button"
                       onClick={() => adjustManualDate(1)}
-                      className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                      className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 cursor-pointer"
                     >
                       <Plus size={13} />
                     </button>
@@ -1725,68 +1725,68 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
           </div>
 
           {/* Right Panel: Simulation Results */}
-          <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4">
+          <div className="lg:col-span-7 bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/90 dark:border-zinc-800 shadow-xs p-4">
             {!simResult ? (
-              <div className="h-full min-h-[220px] flex flex-col items-center justify-center text-center text-slate-400">
+              <div className="h-full min-h-[220px] flex flex-col items-center justify-center text-center text-slate-400 dark:text-zinc-500">
                 <Calculator size={28} className="mb-2 opacity-50" />
-                <p className="text-xs font-bold text-slate-600">
+                <p className="text-xs font-bold text-slate-600 dark:text-zinc-300">
                   Completá los datos para proyectar el desgaste diario
                 </p>
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">
                   Verás el cronograma día por día y la fecha óptima de cambio
                 </p>
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="p-3.5 rounded-xl bg-indigo-50/80 border border-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="p-3.5 rounded-xl bg-indigo-50/80 dark:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
                       Momento Óptimo de Recambio ({simResult.days} jornadas seguras)
                     </span>
-                    <div className="text-xs font-black text-indigo-950 mt-0.5">
+                    <div className="text-xs font-black text-indigo-950 dark:text-indigo-200 mt-0.5">
                       {simResult.recommendationText}
                     </div>
                   </div>
-                  <div className="px-3 py-1.5 rounded-xl bg-white border border-indigo-200 text-right shrink-0">
-                    <span className="block text-[9px] font-bold uppercase text-slate-400">
+                  <div className="px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-indigo-500/30 text-right shrink-0">
+                    <span className="block text-[9px] font-bold uppercase text-slate-400 dark:text-zinc-500">
                       Remanente al cambio
                     </span>
-                    <span className="text-xs font-black text-indigo-700">
+                    <span className="text-xs font-black text-indigo-700 dark:text-indigo-300">
                       {simResult.hoursAtChange} hs
                     </span>
                   </div>
                 </div>
 
-                <div className="max-h-[340px] overflow-y-auto rounded-xl border border-slate-200">
+                <div className="max-h-[340px] overflow-y-auto rounded-xl border border-slate-200 dark:border-zinc-800">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-extrabold uppercase text-slate-500">
+                      <tr className="bg-slate-50 dark:bg-zinc-950 border-b border-slate-200 dark:border-zinc-800 text-[10px] font-extrabold uppercase text-slate-500 dark:text-zinc-400">
                         <th className="py-2 px-3">Día</th>
                         <th className="py-2 px-3">Inicio</th>
                         <th className="py-2 px-3">Cierre</th>
                         <th className="py-2 px-3 text-right">Estado</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs">
+                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-800 text-xs">
                       {simResult.simulationDays.map((d) => (
-                        <tr key={d.dayIndex} className="hover:bg-slate-50/70">
-                          <td className="py-2 px-3 font-bold text-slate-800 capitalize">
+                        <tr key={d.dayIndex} className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/50">
+                          <td className="py-2 px-3 font-bold text-slate-800 dark:text-zinc-200 capitalize">
                             #{d.dayIndex} · {d.dateFormatted}
                           </td>
-                          <td className="py-2 px-3 text-slate-600 font-mono">
+                          <td className="py-2 px-3 text-slate-600 dark:text-zinc-400 font-mono">
                             {d.hoursAtStart}h
                           </td>
-                          <td className="py-2 px-3 font-bold font-mono text-slate-900">
+                          <td className="py-2 px-3 font-bold font-mono text-slate-900 dark:text-zinc-100">
                             {d.hoursAtEnd}h
                           </td>
                           <td className="py-2 px-3 text-right">
                             <span
                               className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
                                 d.status === "SEGURO"
-                                  ? "bg-emerald-50 text-emerald-700"
+                                  ? "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                                   : d.status === "RECOMENDADO"
-                                  ? "bg-amber-50 text-amber-700"
-                                  : "bg-rose-50 text-rose-700"
+                                  ? "bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                                  : "bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300"
                               }`}
                             >
                               {d.status}
@@ -1806,7 +1806,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       {/* ─── MODAL 1: AGREGAR LÁMPARA A BACKUP ─── */}
       {showAddBackup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-backdrop-in">
-          <div className="bg-white w-full max-w-md rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-modal-in">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl overflow-hidden animate-modal-in">
             <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-amber-400" />
@@ -1823,7 +1823,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
 
             <div className="p-5 space-y-3.5">
               {addError && (
-                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+                <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
                   <AlertTriangle size={14} className="shrink-0" />
                   <span>{addError}</span>
                 </div>
@@ -1831,7 +1831,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
                     N° de Serie / ID *
                   </label>
                   <input
@@ -1839,11 +1839,11 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                     value={bId}
                     onChange={(e) => setBId(e.target.value)}
                     placeholder="Ej: L-9082"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 uppercase focus:bg-white focus:border-rose-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-bold text-slate-900 dark:text-zinc-100 uppercase focus:bg-white dark:focus:bg-zinc-900 focus:border-rose-500 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
                     Marca
                   </label>
                   <input
@@ -1851,13 +1851,13 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                     value={bMarca}
                     onChange={(e) => setBMarca(e.target.value)}
                     placeholder="USHIO / OSRAM"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 uppercase focus:bg-white focus:border-rose-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-bold text-slate-900 dark:text-zinc-100 uppercase focus:bg-white dark:focus:bg-zinc-900 focus:border-rose-500 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
                   Potencia Nominal
                 </label>
                 <div className="grid grid-cols-4 gap-1.5">
@@ -1869,7 +1869,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                       className={`py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
                         bPotencia === pot
                           ? "bg-rose-600 text-white border-rose-600 shadow-xs"
-                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                          : "bg-slate-50 dark:bg-zinc-950 text-slate-700 dark:text-zinc-300 border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
                       }`}
                     >
                       {pot}
@@ -1879,7 +1879,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
                   Modelo
                 </label>
                 <div className="flex flex-wrap gap-1.5">
@@ -1890,8 +1890,8 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                       onClick={() => setBModelo(mod)}
                       className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
                         bModelo === mod
-                          ? "bg-slate-900 text-white border-slate-900"
-                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                          ? "bg-slate-900 dark:bg-zinc-800 text-white border-slate-900 dark:border-zinc-700"
+                          : "bg-slate-50 dark:bg-zinc-950 text-slate-600 dark:text-zinc-400 border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
                       }`}
                     >
                       {mod}
@@ -1901,7 +1901,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
                   Notas u Observaciones (Opcional)
                 </label>
                 <textarea
@@ -1909,15 +1909,15 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                   value={bNotas}
                   onChange={(e) => setBNotas(e.target.value)}
                   placeholder="Ej: Recibida en remito #401..."
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:bg-white focus:border-rose-500 focus:outline-none resize-none"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs text-slate-800 dark:text-zinc-200 focus:bg-white dark:focus:bg-zinc-900 focus:border-rose-500 focus:outline-none resize-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setShowAddBackup(false)}
-                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -1939,7 +1939,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       {/* ─── MODAL 2: INSTALAR LÁMPARA EN SALA ─── */}
       {installModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-backdrop-in">
-          <div className="bg-white w-full max-w-md rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-modal-in">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl overflow-hidden animate-modal-in">
             <div className="px-5 py-3.5 bg-indigo-950 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Zap size={16} className="text-indigo-400" />
@@ -1957,9 +1957,9 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
             </div>
 
             <div className="p-5 space-y-3">
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-slate-600 dark:text-zinc-400">
                 Seleccioná la unidad disponible del Stock Backup que vas a colocar en el proyector de la{" "}
-                <strong className="text-slate-900">Sala {installModal.sala}</strong>:
+                <strong className="text-slate-900 dark:text-zinc-100">Sala {installModal.sala}</strong>:
               </p>
 
               <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
@@ -1972,15 +1972,15 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                       onClick={() => setSelectedBackupId(lamp.id)}
                       className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
                         selected
-                          ? "bg-indigo-50/90 border-indigo-500 ring-1 ring-indigo-500"
-                          : "bg-slate-50 border-slate-200 hover:bg-slate-100"
+                          ? "bg-indigo-50/90 dark:bg-indigo-950/50 border-indigo-500 ring-1 ring-indigo-500"
+                          : "bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
                       }`}
                     >
                       <div>
-                        <div className="text-xs font-black text-slate-900 font-mono">
+                        <div className="text-xs font-black text-slate-900 dark:text-zinc-100 font-mono">
                           {lamp.id}
                         </div>
-                        <div className="text-[10px] font-bold text-slate-500 mt-0.5">
+                        <div className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 mt-0.5">
                           {[lamp.marca, lamp.potencia, lamp.modelo].filter(Boolean).join(" · ")}
                         </div>
                       </div>
@@ -1988,7 +1988,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                         className={`w-5 h-5 rounded-full flex items-center justify-center ${
                           selected
                             ? "bg-indigo-600 text-white"
-                            : "border border-slate-300 bg-white"
+                            : "border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
                         }`}
                       >
                         {selected && <Check size={12} />}
@@ -1998,11 +1998,11 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                 })}
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setInstallModal(null)}
-                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -2024,7 +2024,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       {/* ─── MODAL 3: RETIRAR LÁMPARA A HISTORIAL FINAL ─── */}
       {retireModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-backdrop-in">
-          <div className="bg-white w-full max-w-md rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-modal-in">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl overflow-hidden animate-modal-in">
             <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <LogOut size={16} className="text-rose-400" />
@@ -2042,46 +2042,46 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
             </div>
 
             <div className="p-5 space-y-3.5">
-              <div className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700">
+              <div className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-bold text-slate-700 dark:text-zinc-300">
                 Unidad a archivar:{" "}
-                <span className="font-mono font-black text-slate-950">
+                <span className="font-mono font-black text-slate-950 dark:text-zinc-100">
                   {retireModal.lamparaId}
                 </span>
               </div>
 
               {retireError && (
-                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold">
                   {retireError}
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
                     Horas Usadas Finales *
                   </label>
                   <input
                     type="number"
                     value={rHorasUsadas}
                     onChange={(e) => setRHorasUsadas(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 focus:bg-white focus:border-rose-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-bold text-slate-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-900 focus:border-rose-500 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
                     Horas Restantes *
                   </label>
                   <input
                     type="number"
                     value={rHorasRestantes}
                     onChange={(e) => setRHorasRestantes(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 focus:bg-white focus:border-rose-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-bold text-slate-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-900 focus:border-rose-500 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
                   Motivo de Retiro
                 </label>
                 <div className="grid grid-cols-3 gap-1.5">
@@ -2098,8 +2098,8 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                       onClick={() => setRTipoRetiro(mot)}
                       className={`py-2 px-2 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${
                         rTipoRetiro === mot
-                          ? "bg-slate-900 text-white border-slate-900"
-                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                          ? "bg-slate-900 dark:bg-zinc-800 text-white border-slate-900 dark:border-zinc-700"
+                          : "bg-slate-50 dark:bg-zinc-950 text-slate-600 dark:text-zinc-400 border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
                       }`}
                     >
                       {mot}
@@ -2109,7 +2109,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
                   Observaciones del retiro
                 </label>
                 <textarea
@@ -2117,15 +2117,15 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                   value={rDescripcion}
                   onChange={(e) => setRDescripcion(e.target.value)}
                   placeholder="Ej: Parpadeo leve o reemplazo preventivo..."
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:bg-white focus:border-rose-500 focus:outline-none resize-none"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs text-slate-800 dark:text-zinc-200 focus:bg-white dark:focus:bg-zinc-900 focus:border-rose-500 focus:outline-none resize-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setRetireModal(null)}
-                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -2147,21 +2147,21 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       {/* ─── MODAL 4: CONFIRMAR ELIMINACIÓN DE BACKUP ─── */}
       {deleteConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-backdrop-in">
-          <div className="bg-white w-full max-w-sm rounded-2xl border border-slate-200 shadow-2xl p-5 space-y-3 animate-modal-in">
-            <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-sm rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl p-5 space-y-3 animate-modal-in">
+            <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center">
               <Trash2 size={20} />
             </div>
-            <h3 className="text-sm font-extrabold text-slate-900">
+            <h3 className="text-sm font-extrabold text-slate-900 dark:text-zinc-100">
               ¿Eliminar lámpara {deleteConfirmModal.id}?
             </h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
               Esta unidad se quitará permanentemente del Stock de Backup.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setDeleteConfirmModal(null)}
-                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer"
               >
                 Cancelar
               </button>
@@ -2180,21 +2180,21 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       {/* ─── MODAL 5: CONFIRMAR REVERTIR MOVIMIENTO ─── */}
       {revertConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-backdrop-in">
-          <div className="bg-white w-full max-w-sm rounded-2xl border border-slate-200 shadow-2xl p-5 space-y-3 animate-modal-in">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-sm rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl p-5 space-y-3 animate-modal-in">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center">
               <RotateCcw size={20} />
             </div>
-            <h3 className="text-sm font-extrabold text-slate-900">
+            <h3 className="text-sm font-extrabold text-slate-900 dark:text-zinc-100">
               ¿Revertir movimiento de {revertConfirmModal.lamparaId}?
             </h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
               La lámpara volverá a su estado anterior y este registro de movimiento se eliminará.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setRevertConfirmModal(null)}
-                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer"
               >
                 Cancelar
               </button>

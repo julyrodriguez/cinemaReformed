@@ -15,6 +15,19 @@ import {
   Image,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  ChevronLeft,
+  ChevronRight,
+  RotateCw,
+  LayoutGrid,
+  List,
+  CheckSquare,
+  Square,
+  Info,
+  Calendar,
+  Clock,
+  Sparkles,
+} from "lucide-react";
 import { doc, onSnapshot, getDoc, collection } from "@/lib/dbService";
 import { db, CINES_COLLECTION, functions } from "../../lib/firebaseConfig";
 import { httpsCallable } from "@/lib/dbService";
@@ -2319,6 +2332,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   opacity: 0.6
                 }
               ]}
+              {...({ className: "hover-lift transition-all" } as any)}
             >
               {/* Room number to the left */}
               <View style={[
@@ -3006,24 +3020,24 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     <View style={styles.container}>
       {/* Header Info */}
       {hasHeaderContent ? (
-        <View style={[styles.header, { justifyContent: "center", paddingVertical: 12 }]}>
-          <View style={[styles.headerInfo, { alignItems: "center", width: "100%" }]}>
-            {formattedWeekLabel ? (
-              <Text style={styles.headerTitle}>{formattedWeekLabel}</Text>
-            ) : null}
-            {!useApiData && (
-              <Text style={[styles.headerSubtitle, { textAlign: "center" }]}>
-                La programación se obtiene a partir del reporte cargado y guardado en la sección de Servicios &gt; Programación.
-              </Text>
-            )}
-            {useApiData && apiError && (
-              <View style={styles.apiErrorBanner}>
-                <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#B45309" style={{ marginRight: 4 }} />
-                <Text style={styles.apiErrorText}>{apiError}</Text>
-              </View>
-            )}
-          </View>
-        </View>
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-3 mb-3 text-center">
+          {formattedWeekLabel ? (
+            <h2 className="text-sm font-black text-slate-900 dark:text-zinc-100 tracking-tight">
+              {formattedWeekLabel}
+            </h2>
+          ) : null}
+          {!useApiData && (
+            <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+              La programación se obtiene a partir del reporte cargado y guardado en la sección de Servicios &gt; Programación.
+            </p>
+          )}
+          {useApiData && apiError && (
+            <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-bold border border-amber-500/20">
+              <Info size={13} />
+              <span>{apiError}</span>
+            </div>
+          )}
+        </div>
       ) : null}
 
       {/* Week Selector Bar (if in API mode) */}
@@ -3044,103 +3058,70 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         }
         
         return (
-          <View style={styles.singleWeekSelectorContainer}>
-            <TouchableOpacity
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <button
+              type="button"
               disabled={!canGoPrev}
-              onPress={() => setSelectedWeekStart(availableWeeks[currentIndex - 1])}
-              style={[styles.arrowButton, !canGoPrev && styles.arrowButtonDisabled]}
+              onClick={() => setSelectedWeekStart(availableWeeks[currentIndex - 1])}
+              className="p-1.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors shadow-xs cursor-pointer"
             >
-              <MaterialCommunityIcons name="chevron-left" size={20} color={canGoPrev ? COLORS.text : COLORS.muted} />
-            </TouchableOpacity>
+              <ChevronLeft size={16} />
+            </button>
             
-            <View style={styles.singleWeekLabelContainer}>
-              <Text style={styles.singleWeekLabelText}>{label}</Text>
-            </View>
+            <div className="px-3.5 py-1.5 rounded-xl border border-slate-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs min-w-[210px] text-center">
+              <span className="text-xs font-black text-slate-800 dark:text-zinc-200">
+                {label}
+              </span>
+            </div>
 
-            <TouchableOpacity
+            <button
+              type="button"
               disabled={!canGoNext}
-              onPress={() => setSelectedWeekStart(availableWeeks[currentIndex + 1])}
-              style={[styles.arrowButton, !canGoNext && styles.arrowButtonDisabled]}
+              onClick={() => setSelectedWeekStart(availableWeeks[currentIndex + 1])}
+              className="p-1.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors shadow-xs cursor-pointer"
             >
-              <MaterialCommunityIcons name="chevron-right" size={20} color={canGoNext ? COLORS.text : COLORS.muted} />
-            </TouchableOpacity>
-          </View>
+              <ChevronRight size={16} />
+            </button>
+          </div>
         );
       })()}
-
 
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
         <ScrollView ref={verticalScrollRef} style={styles.verticalScrollView} bounces={false}>
 
-          {/* Days Tabs Selection (Index 0 or 1 depending on stats visibility) */}
-          <View style={[
-            styles.tabBarContainer,
-            !isMobile && {
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              paddingHorizontal: 16,
-            }
-          ]}>
-            {!isMobile && (
-              <View style={{ flex: 1, minWidth: 0 }} />
-            )}
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tabBar}
-              style={!isMobile ? {
-                flexShrink: 1,
-                flexGrow: 0,
-                minWidth: 0,
-              } : undefined}
-            >
+          {/* Days Tabs Selection & Controls Toolbar */}
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-2.5 mb-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            {/* Days Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
               {DAYS_OF_WEEK.map((day) => {
                 const isActive = selectedDay === day.key;
                 return (
-                  <TouchableOpacity
+                  <button
                     key={day.key}
-                    onPress={() => setSelectedDay(day.key)}
-                    style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                    type="button"
+                    onClick={() => setSelectedDay(day.key)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                      isActive
+                        ? "bg-rose-600 text-white shadow-xs"
+                        : "bg-slate-100 dark:bg-zinc-950 text-slate-700 dark:text-zinc-400 hover:bg-slate-200/70 dark:hover:bg-zinc-800 border border-slate-200/60 dark:border-zinc-800"
+                    }`}
                   >
-                    <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
-                      {day.label}
-                    </Text>
-                  </TouchableOpacity>
+                    {day.label}
+                  </button>
                 );
               })}
-            </ScrollView>
+            </div>
 
-            <View style={[
-              styles.headerButtonsRow,
-              { paddingVertical: 6, gap: 8 },
-              !isMobile && {
-                flex: 1,
-                flexShrink: 0,
-                minWidth: "max-content" as any,
-                flexDirection: "row",
-                justifyContent: "flex-end",
-                alignItems: "center",
-              },
-              isMobile && {
-                flexDirection: "row",
-                flexWrap: "wrap",
-                justifyContent: "center",
-                alignSelf: "stretch",
-                borderTopWidth: 1,
-                borderTopColor: COLORS.border,
-                paddingVertical: 10,
-                paddingHorizontal: 8,
-                backgroundColor: COLORS.card,
-              }
-            ]}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <TouchableOpacity
-                  onPress={() => {
+            {/* Right Controls */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Ajustar horarios de salida toggle */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
                     if (hasSavedProgramming) {
-                      setAdjustShowtimes(prev => !prev);
+                      setAdjustShowtimes((prev) => !prev);
                     } else {
                       const msg = "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios.";
                       if (Platform.OS === "web") {
@@ -3150,28 +3131,23 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       }
                     }
                   }}
-                  style={[
-                    styles.headerAdjustToggle,
-                    !hasSavedProgramming && styles.headerAdjustToggleDisabled
-                  ]}
-                  activeOpacity={hasSavedProgramming ? 0.8 : 1}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                    adjustShowtimes && hasSavedProgramming
+                      ? "bg-rose-50 dark:bg-rose-500/15 border-rose-500 text-rose-700 dark:text-rose-300"
+                      : "bg-slate-100 dark:bg-zinc-950 border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400"
+                  } ${!hasSavedProgramming ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
-                  <MaterialCommunityIcons
-                    name={adjustShowtimes && hasSavedProgramming ? "checkbox-marked" : "checkbox-blank-outline"}
-                    size={18}
-                    color={adjustShowtimes && hasSavedProgramming ? COLORS.primary : COLORS.muted}
-                    style={{ marginRight: 6 }}
-                  />
-                  <Text style={[
-                    styles.headerAdjustToggleText,
-                    !hasSavedProgramming && styles.headerAdjustToggleTextDisabled
-                  ]}>
-                    Ajustar horarios de salida
-                  </Text>
-                </TouchableOpacity>
-                
-                <Text
-                  onPress={() => {
+                  {adjustShowtimes && hasSavedProgramming ? (
+                    <CheckSquare size={14} className="text-rose-600 dark:text-rose-400" />
+                  ) : (
+                    <Square size={14} />
+                  )}
+                  <span>Ajustar horarios de salida</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
                     const msg = hasSavedProgramming
                       ? "Se ajustan los horarios de salida reales con la programación guardada por el sector de servicios."
                       : "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios.";
@@ -3181,55 +3157,46 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       Alert.alert("Ajustar Horarios de Salida", msg);
                     }
                   }}
-                  style={{ marginLeft: 6, cursor: "help", display: "inline-flex", alignItems: "center", justifyContent: "center" } as any}
-                  {...({
-                    title: hasSavedProgramming
-                      ? "Se ajustan los horarios de salida reales con la programación guardada por el sector de servicios."
-                      : "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios."
-                  } as any)}
+                  title="Ayuda sobre ajuste de horarios"
+                  className="p-1 text-slate-400 hover:text-blue-500 transition-colors"
                 >
-                  <MaterialCommunityIcons 
-                    name="information" 
-                    size={20} 
-                    color={hasSavedProgramming ? "#3B82F6" : "#94A3B8"} 
-                  />
-                </Text>
-              </View>
+                  <Info size={15} />
+                </button>
+              </div>
 
-              <TouchableOpacity
-                onPress={() => setViewMode(prev => prev === "grid" ? "list" : "grid")}
-                style={styles.toggleViewButton}
-                activeOpacity={0.8}
+              {/* View Mode Toggle */}
+              <button
+                type="button"
+                onClick={() => setViewMode((prev) => (prev === "grid" ? "list" : "grid"))}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-950 text-slate-700 dark:text-zinc-300 hover:bg-slate-200/70 dark:hover:bg-zinc-800 text-xs font-bold transition-colors cursor-pointer shadow-xs"
               >
-                <MaterialCommunityIcons
-                  name={viewMode === "grid" ? "view-list" : "view-grid"}
-                  size={18}
-                  color={COLORS.text}
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={styles.toggleViewButtonText}>
-                  {viewMode === "grid" ? "Modo Lista" : "Modo Grilla"}
-                </Text>
-              </TouchableOpacity>
+                {viewMode === "grid" ? (
+                  <>
+                    <List size={14} />
+                    <span>Modo Lista</span>
+                  </>
+                ) : (
+                  <>
+                    <LayoutGrid size={14} />
+                    <span>Modo Grilla</span>
+                  </>
+                )}
+              </button>
 
+              {/* API Sync Button */}
               {useApiData && (
-                <TouchableOpacity
-                  onPress={handleManualSync}
+                <button
+                  type="button"
+                  onClick={handleManualSync}
                   disabled={syncing}
-                  style={styles.apiSyncButton}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer disabled:opacity-50"
                 >
-                  {syncing ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
-                  ) : (
-                    <MaterialCommunityIcons name="cached" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                  )}
-                  <Text style={styles.apiSyncButtonText}>
-                    {syncing ? "Sincronizando..." : "Sincronizar"}
-                  </Text>
-                </TouchableOpacity>
+                  <RotateCw size={13} className={syncing ? "animate-spin" : ""} />
+                  <span>{syncing ? "Sincronizando..." : "Sincronizar"}</span>
+                </button>
               )}
-            </View>
-          </View>
+            </div>
+          </div>
 
           {rooms.length === 0 ? (
             <View style={styles.emptyGridPlaceholder}>

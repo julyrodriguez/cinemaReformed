@@ -1,18 +1,19 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { Alert } from "react-native";
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
-  StyleSheet,
-  useWindowDimensions,
-  Platform,
-  Image,
-} from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+  ImagePlus,
+  Plus,
+  Upload,
+  Link2,
+  Trash2,
+  Search,
+  X,
+  Check,
+  Image as ImageIcon,
+  Calendar,
+  Building2,
+  Sparkles,
+} from "lucide-react";
 import {
   collection,
   addDoc,
@@ -21,7 +22,6 @@ import {
   doc,
 } from "@/lib/dbService";
 import { useAuthUser } from "../../lib/useAuthUser";
-import { COLORS, THEME } from "../../lib/theme";
 import { db } from "../../lib/firebaseConfig";
 import * as DocumentPicker from "expo-document-picker";
 
@@ -33,7 +33,6 @@ interface CustomPoster {
   createdBy: string;
 }
 
-// Helper para convertir ArrayBuffer a Base64 de forma compatible con Web y React Native
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -43,30 +42,31 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
     const b1 = bytes[i];
     const b2 = i + 1 < len ? bytes[i + 1] : 0;
     const b3 = i + 2 < len ? bytes[i + 2] : 0;
-    
+
     const enc1 = b1 >> 2;
     const enc2 = ((b1 & 3) << 4) | (b2 >> 4);
     const enc3 = i + 1 < len ? ((b2 & 15) << 2) | (b3 >> 6) : 64;
     const enc4 = i + 2 < len ? b3 & 63 : 64;
-    
-    base64 += chars.charAt(enc1) + chars.charAt(enc2) + 
-              (enc3 === 64 ? "=" : chars.charAt(enc3)) + 
-              (enc4 === 64 ? "=" : chars.charAt(enc4));
+
+    base64 +=
+      chars.charAt(enc1) +
+      chars.charAt(enc2) +
+      (enc3 === 64 ? "=" : chars.charAt(enc3)) +
+      (enc4 === 64 ? "=" : chars.charAt(enc4));
   }
   return base64;
 }
 
 export default function CustomPostersScreen() {
   const { cineId } = useAuthUser();
-  const { width: windowWidth } = useWindowDimensions();
-  const isMobile = windowWidth < 600;
 
   const [posters, setPosters] = useState<CustomPoster[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<CustomPoster | null>(null);
 
-  // Form states
   const [title, setTitle] = useState("");
   const [uploadMode, setUploadMode] = useState<"file" | "url">("file");
   const [externalUrl, setExternalUrl] = useState("");
@@ -76,7 +76,6 @@ export default function CustomPostersScreen() {
     mimeType: string;
   } | null>(null);
 
-  // Cargar posters de MongoDB
   const loadPosters = async () => {
     try {
       setLoading(true);
@@ -97,8 +96,9 @@ export default function CustomPostersScreen() {
           createdBy: data.createdBy || "",
         };
       });
-      // Ordenar por fecha de creación desc
-      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      list.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
       setPosters(list);
     } catch (e) {
       console.error("Error loading custom posters:", e);
@@ -111,7 +111,16 @@ export default function CustomPostersScreen() {
     loadPosters();
   }, []);
 
-  // Seleccionar imagen
+  const filteredPosters = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return posters;
+    return posters.filter(
+      (p) =>
+        p.title.toLowerCase().includes(q) ||
+        p.createdBy.toLowerCase().includes(q)
+    );
+  }, [posters, searchQuery]);
+
   const handlePickImage = async () => {
     try {
       const res = await DocumentPicker.getDocumentAsync({
@@ -156,23 +165,31 @@ export default function CustomPostersScreen() {
     }
   };
 
-  // Crear póster personalizado en MongoDB
   const handleSavePoster = async () => {
     if (!title.trim()) {
-      Alert.alert("Campos incompletos", "Por favor ingresa el título de la película o evento.");
+      Alert.alert(
+        "Campos incompletos",
+        "Por favor ingresa el título de la película o evento."
+      );
       return;
     }
 
     let finalImageUrl = "";
     if (uploadMode === "url") {
       if (!externalUrl.trim() || !externalUrl.trim().startsWith("http")) {
-        Alert.alert("URL requerida", "Por favor ingresa una URL válida (que comience con http:// o https://).");
+        Alert.alert(
+          "URL requerida",
+          "Por favor ingresa una URL válida (que comience con http:// o https://)."
+        );
         return;
       }
       finalImageUrl = externalUrl.trim();
     } else {
       if (!selectedFile) {
-        Alert.alert("Archivo requerido", "Por favor selecciona una imagen de póster.");
+        Alert.alert(
+          "Archivo requerido",
+          "Por favor selecciona una imagen de póster."
+        );
         return;
       }
       finalImageUrl = `data:${selectedFile.mimeType};base64,${selectedFile.base64}`;
@@ -189,7 +206,6 @@ export default function CustomPostersScreen() {
         createdAt: new Date().toISOString(),
       });
 
-      Alert.alert("Éxito", "Póster personalizado guardado correctamente.");
       setTitle("");
       setExternalUrl("");
       setSelectedFile(null);
@@ -203,483 +219,348 @@ export default function CustomPostersScreen() {
     }
   };
 
-  // Borrar póster
-  const handleDeletePoster = (id: string, movieTitle: string) => {
-    const performDelete = async () => {
-      try {
-        const docRef = doc(db, "cines", "global", "custom_posters", id);
-        await deleteDoc(docRef);
-        Alert.alert("Éxito", "Póster eliminado correctamente.");
-        await loadPosters();
-      } catch (e) {
-        console.error("Error deleting poster:", e);
-        Alert.alert("Error", "No se pudo eliminar el póster.");
-      }
-    };
-
-    if (Platform.OS === "web") {
-      if (confirm(`¿Estás seguro de eliminar el póster para "${movieTitle}"?`)) {
-        performDelete();
-      }
-    } else {
-      Alert.alert(
-        "Confirmar eliminación",
-        `¿Estás seguro de eliminar el póster para "${movieTitle}"?`,
-        [
-          { text: "Cancelar", style: "cancel" },
-          { text: "Eliminar", style: "destructive", onPress: performDelete },
-        ]
-      );
+  const confirmDeletePoster = async () => {
+    if (!deleteTarget) return;
+    try {
+      const docRef = doc(db, "cines", "global", "custom_posters", deleteTarget.id);
+      await deleteDoc(docRef);
+      setDeleteTarget(null);
+      await loadPosters();
+    } catch (e) {
+      console.error("Error deleting poster:", e);
+      Alert.alert("Error", "No se pudo eliminar el póster.");
     }
   };
 
+  const previewUri =
+    uploadMode === "file" && selectedFile
+      ? `data:${selectedFile.mimeType};base64,${selectedFile.base64}`
+      : uploadMode === "url" && externalUrl.trim().startsWith("http")
+      ? externalUrl.trim()
+      : null;
+
   return (
-    <ScrollView contentContainerStyle={s.scrollContainer} showsVerticalScrollIndicator={false}>
-      {/* Encabezado */}
-      <View style={s.header}>
-        <View>
-          <Text style={s.title}>🎨 Pósters Personalizados</Text>
-          <Text style={s.subtitle}>
-            Administra pósters e imágenes para películas o eventos que no figuran en TMDB.
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={[s.addToggleBtn, showAddForm && s.addToggleBtnActive]}
-          onPress={() => setShowAddForm(!showAddForm)}
-        >
-          <MaterialCommunityIcons
-            name={showAddForm ? "close" : "plus"}
-            size={20}
-            color="#FFF"
-          />
-          <Text style={s.addToggleBtnText}>{showAddForm ? "Cancelar" : "Nuevo Póster"}</Text>
-        </TouchableOpacity>
-      </View>
+    <div className="w-full max-w-[1440px] mx-auto px-3 sm:px-5 py-3 pb-24">
+      {/* Compact Header Toolbar */}
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-rose-50 dark:bg-rose-500/15 border border-rose-100 dark:border-rose-500/30 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
+            <ImagePlus size={18} strokeWidth={2.2} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-extrabold text-slate-900 dark:text-zinc-100 tracking-tight">
+                Catálogo Global de Pósters Custom
+              </h2>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                {posters.length} registrados
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+              Imágenes para festivales, ciclos o funciones especiales que no figuran en TMDB
+            </p>
+          </div>
+        </div>
 
-      {/* Formulario de Carga */}
-      {showAddForm && (
-        <View style={s.formCard}>
-          <Text style={s.formTitle}>Cargar nuevo póster</Text>
-
-          {/* Selector de Modo: Archivo local vs URL Externa */}
-          <View style={s.modeSelectorRow}>
-            <TouchableOpacity
-              style={[s.modePill, uploadMode === "file" && s.modePillActive]}
-              onPress={() => setUploadMode("file")}
-            >
-              <MaterialCommunityIcons
-                name="upload"
-                size={16}
-                color={uploadMode === "file" ? "#FFF" : COLORS.muted}
-              />
-              <Text style={[s.modePillText, uploadMode === "file" && s.modePillTextActive]}>
-                Subir Archivo
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[s.modePill, uploadMode === "url" && s.modePillActive]}
-              onPress={() => setUploadMode("url")}
-            >
-              <MaterialCommunityIcons
-                name="link-variant"
-                size={16}
-                color={uploadMode === "url" ? "#FFF" : COLORS.muted}
-              />
-              <Text style={[s.modePillText, uploadMode === "url" && s.modePillTextActive]}>
-                URL Externa (Web)
-              </Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={s.formRow}>
-            {/* Campo Título */}
-            <View style={[s.fieldGroup, { flex: 1, minWidth: 240 }]}>
-              <Text style={s.label}>Título de la película / evento *</Text>
-              <TextInput
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Ej: Festival de Cine Coreano 2026"
-                placeholderTextColor={COLORS.muted}
-                style={s.input}
-              />
-            </View>
-
-            {/* Selector de Imagen o Input de URL */}
-            {uploadMode === "file" ? (
-              <View style={[s.fieldGroup, { minWidth: 200 }]}>
-                <Text style={s.label}>Archivo de póster *</Text>
-                <TouchableOpacity style={s.pickBtn} onPress={handlePickImage}>
-                  <MaterialCommunityIcons name="image-plus" size={20} color={COLORS.primary} />
-                  <Text style={s.pickBtnText} numberOfLines={1}>
-                    {selectedFile ? selectedFile.name : "Seleccionar imagen"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={[s.fieldGroup, { flex: 1.2, minWidth: 260 }]}>
-                <Text style={s.label}>URL de la Imagen * (https://...)</Text>
-                <TextInput
-                  value={externalUrl}
-                  onChangeText={setExternalUrl}
-                  placeholder="https://ejemplo.com/poster.jpg"
-                  placeholderTextColor={COLORS.muted}
-                  style={s.input}
-                  autoCapitalize="none"
-                  keyboardType="url"
-                />
-              </View>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 sm:w-56">
+            <Search
+              size={13}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar película o complejo…"
+              className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-medium text-slate-800 dark:text-zinc-200 focus:bg-white focus:outline-none"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X size={12} />
+              </button>
             )}
-          </View>
+          </div>
 
-          {/* Previsualización */}
-          {uploadMode === "file" && selectedFile && (
-            <View style={s.previewContainer}>
-              <Text style={s.label}>Previsualización del póster</Text>
-              <View style={s.previewFrame}>
-                <Image
-                  source={{ uri: `data:${selectedFile.mimeType};base64,${selectedFile.base64}` }}
-                  style={s.previewImage}
-                  resizeMode="contain"
-                />
-              </View>
-            </View>
-          )}
-
-          {uploadMode === "url" && externalUrl.trim().startsWith("http") && (
-            <View style={s.previewContainer}>
-              <Text style={s.label}>Previsualización de la URL externa</Text>
-              <View style={s.previewFrame}>
-                <Image
-                  source={{ uri: externalUrl.trim() }}
-                  style={s.previewImage}
-                  resizeMode="contain"
-                />
-              </View>
-            </View>
-          )}
-
-          {/* Botones de acción */}
-          <TouchableOpacity
-            style={s.saveBtn}
-            onPress={handleSavePoster}
-            disabled={saving}
+          <button
+            type="button"
+            onClick={() => setShowAddForm(true)}
+            className="group inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 text-white text-xs font-bold shadow-sm shadow-rose-500/20 hover:shadow-md hover:shadow-rose-500/30 active:scale-[0.97] transition-all cursor-pointer shrink-0"
           >
-            {saving ? (
-              <ActivityIndicator color="#FFF" size="small" />
-            ) : (
-              <>
-                <MaterialCommunityIcons name="content-save" size={18} color="#FFF" />
-                <Text style={s.saveBtnText}>Guardar Póster</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+            <Plus
+              size={14}
+              strokeWidth={2.5}
+              className="transition-transform duration-200 group-hover:rotate-90"
+            />
+            <span>Nuevo Póster</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Poster Gallery */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+          <div className="w-7 h-7 rounded-full border-2 border-slate-200 border-t-rose-600 animate-spin mb-2.5" />
+          <span className="text-xs font-semibold">Cargando catálogo de pósters…</span>
+        </div>
+      ) : filteredPosters.length === 0 ? (
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-dashed border-slate-300 dark:border-zinc-800 p-12 text-center max-w-md mx-auto my-6 animate-card-in">
+          <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-3">
+            <ImageIcon size={24} />
+          </div>
+          <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-100 mb-1">
+            {searchQuery ? "Sin coincidencias" : "No hay pósters personalizados"}
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-zinc-400 mb-4">
+            {searchQuery
+              ? "Probá con otro término de búsqueda."
+              : "Subí una imagen desde archivo o URL externa para vincularla automáticamente con el título."}
+          </p>
+          {!searchQuery && (
+            <button
+              type="button"
+              onClick={() => setShowAddForm(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-rose-600 transition-colors cursor-pointer"
+            >
+              <Plus size={14} />
+              Cargar Primer Póster
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+          {filteredPosters.map((item, idx) => (
+            <div
+              key={item.id}
+              style={{ animationDelay: `${Math.min(idx * 25, 250)}ms` }}
+              className="animate-card-in hover-lift group bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/90 dark:border-zinc-800 shadow-xs overflow-hidden flex flex-col justify-between"
+            >
+              <div className="relative aspect-[2/3] w-full bg-slate-100 dark:bg-zinc-950 overflow-hidden">
+                {item.imageUrl ? (
+                  <img
+                    src={item.imageUrl}
+                    alt={item.title}
+                    loading="lazy"
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-slate-300">
+                    <ImageIcon size={28} />
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(item)}
+                  title="Eliminar póster"
+                  className="absolute top-2 right-2 w-7 h-7 rounded-xl bg-slate-950/75 hover:bg-rose-600 text-white flex items-center justify-center backdrop-blur-xs transition-colors cursor-pointer"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+
+              <div className="p-2.5 flex flex-col justify-between flex-1 gap-1.5">
+                <h4
+                  title={item.title}
+                  className="text-xs font-extrabold text-slate-900 dark:text-zinc-100 line-clamp-2 leading-snug"
+                >
+                  {item.title}
+                </h4>
+                <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-zinc-500 pt-1 border-t border-slate-100 dark:border-zinc-800/80">
+                  <span className="inline-flex items-center gap-1 font-bold uppercase truncate max-w-[95px]">
+                    <Building2 size={10} />
+                    {item.createdBy}
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 shrink-0">
+                    <Calendar size={10} />
+                    {item.createdAt
+                      ? new Date(item.createdAt).toLocaleDateString("es-AR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                        })
+                      : "-"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
-      {/* Listado de Pósters */}
-      {loading ? (
-        <View style={s.center}>
-          <ActivityIndicator color={COLORS.primary} size="large" />
-          <Text style={s.loadingText}>Cargando pósters personalizados...</Text>
-        </View>
-      ) : posters.length === 0 ? (
-        <View style={s.emptyCard}>
-          <MaterialCommunityIcons name="image-multiple-outline" size={48} color={COLORS.muted} />
-          <Text style={s.emptyTitle}>No hay pósters cargados</Text>
-          <Text style={s.emptyText}>
-            Usa el botón "Nuevo Póster" de arriba para registrar una imagen personalizada.
-          </Text>
-        </View>
-      ) : (
-        <View style={s.gridContainer}>
-          {posters.map((item) => (
-            <View key={item.id} style={s.posterCard}>
-              <View style={s.posterImageFrame}>
-                {item.imageUrl ? (
-                  <Image source={{ uri: item.imageUrl }} style={s.posterImg} resizeMode="cover" />
+      {/* Modal: Nuevo Póster */}
+      {showAddForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-backdrop-in">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl overflow-hidden animate-modal-in">
+            <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles size={16} className="text-rose-400" />
+                <h3 className="text-sm font-extrabold">Nuevo Póster Personalizado</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddForm(false)}
+                className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 cursor-pointer"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="p-5 grid grid-cols-1 sm:grid-cols-12 gap-4">
+              <div className="sm:col-span-7 space-y-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                    Origen de la Imagen
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5 bg-slate-100 dark:bg-zinc-950 p-1 rounded-xl border border-slate-200 dark:border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={() => setUploadMode("file")}
+                      className={`inline-flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                        uploadMode === "file"
+                          ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      <Upload size={12} />
+                      Subir Archivo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUploadMode("url")}
+                      className={`inline-flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                        uploadMode === "url"
+                          ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      <Link2 size={12} />
+                      URL Web
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                    Título de la Película o Evento *
+                  </label>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Ej: Festival de Cine Coreano 2026"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none"
+                  />
+                </div>
+
+                {uploadMode === "file" ? (
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                      Archivo de Imagen (Máx. 1MB) *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handlePickImage}
+                      className="w-full px-3 py-2.5 rounded-xl border border-dashed border-rose-300 bg-rose-50/50 hover:bg-rose-50 text-rose-700 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <ImagePlus size={15} />
+                      <span className="truncate">
+                        {selectedFile ? selectedFile.name : "Seleccionar imagen del equipo…"}
+                      </span>
+                    </button>
+                  </div>
                 ) : (
-                  <View style={s.noImagePlaceholder}>
-                    <MaterialCommunityIcons name="image-off" size={32} color={COLORS.muted} />
-                  </View>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                      URL directa de la imagen (https://...) *
+                    </label>
+                    <input
+                      type="url"
+                      value={externalUrl}
+                      onChange={(e) => setExternalUrl(e.target.value)}
+                      placeholder="https://ejemplo.com/poster.jpg"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 focus:bg-white focus:outline-none"
+                    />
+                  </div>
                 )}
-                {/* Botón de borrado */}
-                <TouchableOpacity
-                  style={s.deleteBtn}
-                  onPress={() => handleDeletePoster(item.id, item.title)}
-                >
-                  <MaterialCommunityIcons name="trash-can-outline" size={16} color="#FFF" />
-                </TouchableOpacity>
-              </View>
-              <View style={s.posterMeta}>
-                <Text style={s.posterTitle} numberOfLines={2}>
-                  {item.title}
-                </Text>
-                <View style={s.posterSubMeta}>
-                  <Text style={s.posterCine}>Cine: {item.createdBy.toUpperCase()}</Text>
-                  <Text style={s.posterDate}>
-                    {new Date(item.createdAt).toLocaleDateString()}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          ))}
-        </View>
+              </div>
+
+              {/* Poster Aspect Preview */}
+              <div className="sm:col-span-5 flex flex-col items-center justify-center">
+                <div className="w-32 aspect-[2/3] rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 overflow-hidden flex flex-col items-center justify-center text-slate-400 shadow-inner">
+                  {previewUri ? (
+                    <img
+                      src={previewUri}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <>
+                      <ImageIcon size={22} className="mb-1 opacity-50" />
+                      <span className="text-[10px] font-semibold">Vista previa 2:3</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-3 bg-slate-50 dark:bg-zinc-950 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddForm(false)}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200/60 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={handleSavePoster}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                <Check size={14} />
+                {saving ? "Guardando…" : "Guardar Póster"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-    </ScrollView>
+
+      {/* Modal Confirmar Eliminación */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-backdrop-in">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-sm rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl p-5 space-y-3 animate-modal-in">
+            <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+              <Trash2 size={20} />
+            </div>
+            <h3 className="text-sm font-extrabold text-slate-900 dark:text-zinc-100">
+              ¿Eliminar póster de "{deleteTarget.title}"?
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
+              Esta acción quitará el póster personalizado para todos los complejos.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeletePoster}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold cursor-pointer"
+              >
+                Sí, eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
-
-const s = StyleSheet.create({
-  scrollContainer: {
-    padding: 16,
-    gap: 16,
-  },
-  center: {
-    padding: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: COLORS.muted,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  addToggleBtn: {
-    backgroundColor: COLORS.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-    gap: 8,
-    ...THEME.shadow.soft,
-  },
-  addToggleBtnActive: {
-    backgroundColor: COLORS.muted,
-  },
-  addToggleBtnText: {
-    color: "#FFF",
-    fontWeight: "bold",
-    fontSize: 14,
-  },
-  formCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 16,
-    ...THEME.shadow.soft,
-  },
-  formTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: COLORS.text,
-  },
-  modeSelectorRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 4,
-  },
-  modePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: COLORS.bg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  modePillActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  modePillText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.muted,
-  },
-  modePillTextActive: {
-    color: "#FFF",
-  },
-  formRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  fieldGroup: {
-    gap: 6,
-  },
-  label: {
-    color: COLORS.muted,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  input: {
-    backgroundColor: COLORS.bg,
-    color: COLORS.text,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    fontSize: 14,
-  },
-  pickBtn: {
-    backgroundColor: COLORS.bg,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 8,
-    minWidth: 200,
-  },
-  pickBtnText: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: "600",
-    flex: 1,
-  },
-  previewContainer: {
-    gap: 6,
-  },
-  previewFrame: {
-    height: 160,
-    backgroundColor: COLORS.bg,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-  },
-  previewImage: {
-    width: "100%",
-    height: "100%",
-  },
-  saveBtn: {
-    backgroundColor: COLORS.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    borderRadius: 10,
-    gap: 8,
-  },
-  saveBtnText: {
-    color: "#FFF",
-    fontWeight: "bold",
-    fontSize: 14,
-  },
-  emptyCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 12,
-    marginTop: 20,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: COLORS.text,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: COLORS.muted,
-    textAlign: "center",
-    maxWidth: 320,
-    lineHeight: 18,
-  },
-  gridContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 16,
-    marginTop: 8,
-  },
-  posterCard: {
-    width: Platform.OS === "web" ? "18%" : "45%",
-    minWidth: 140,
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    overflow: "hidden",
-    ...THEME.shadow.soft,
-  },
-  posterImageFrame: {
-    height: 200,
-    backgroundColor: COLORS.bg,
-    position: "relative",
-  },
-  posterImg: {
-    width: "100%",
-    height: "100%",
-  },
-  noImagePlaceholder: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deleteBtn: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    backgroundColor: "rgba(239, 68, 68, 0.85)",
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  posterMeta: {
-    padding: 10,
-    gap: 6,
-  },
-  posterTitle: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: COLORS.text,
-    lineHeight: 16,
-  },
-  posterSubMeta: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  posterCine: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: COLORS.muted,
-  },
-  posterDate: {
-    fontSize: 10,
-    color: COLORS.muted,
-  },
-});
