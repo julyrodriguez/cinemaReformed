@@ -234,8 +234,8 @@ export default function CompanyScreen() {
 
   // Petición HTTP Helper con Tokens
   const fetchFromApi = async (endpoint: string) => {
-    const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "/api";
-    const apiToken = process.env.EXPO_PUBLIC_API_TOKEN || "";
+    const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || process.env.API_URL || "/api";
+    const apiToken = process.env.EXPO_PUBLIC_API_TOKEN || process.env.API_TOKEN || "";
     
     const headers: any = {
       "Content-Type": "application/json",

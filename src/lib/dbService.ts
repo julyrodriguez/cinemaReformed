@@ -802,7 +802,7 @@ export function httpsCallable<RequestData = any, ResponseData = any>(
     }
 
     try {
-      const token = process.env.EXPO_PUBLIC_API_TOKEN || "";
+      const token = process.env.EXPO_PUBLIC_API_TOKEN || process.env.API_TOKEN || "";
       const authToken = await getAuthToken();
 
       const headers: any = {

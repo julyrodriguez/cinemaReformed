@@ -3,12 +3,51 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig(({ mode }) => {
-  const loadedEnv = loadEnv(mode, process.cwd(), ['VITE_', 'EXPO_PUBLIC_']);
+  const loadedEnv = loadEnv(mode, process.cwd(), ['VITE_', 'EXPO_PUBLIC_', '']);
   const env: Record<string, string> = { ...loadedEnv };
 
   for (const [k, v] of Object.entries(process.env)) {
-    if ((k.startsWith('EXPO_PUBLIC_') || k.startsWith('VITE_')) && typeof v === 'string') {
+    if (typeof v === 'string') {
       env[k] = v;
+    }
+  }
+
+  // Cross-map variables so they work with or without EXPO_PUBLIC_ prefix
+  // (Permite en Vercel guardar API_TOKEN como variable "Sensitive / Secret" sin el prefijo EXPO_PUBLIC_)
+  const token = env['API_TOKEN'] || env['EXPO_PUBLIC_API_TOKEN'] || '';
+  if (token) {
+    env['API_TOKEN'] = token;
+    env['EXPO_PUBLIC_API_TOKEN'] = token;
+  }
+
+  const apiUrl = env['API_URL'] || env['EXPO_PUBLIC_API_URL'] || '';
+  if (apiUrl) {
+    env['API_URL'] = apiUrl;
+    env['EXPO_PUBLIC_API_URL'] = apiUrl;
+  }
+
+  const backendUrl = env['BACKEND_URL'] || env['EXPO_PUBLIC_BACKEND_URL'] || '';
+  if (backendUrl) {
+    env['BACKEND_URL'] = backendUrl;
+    env['EXPO_PUBLIC_BACKEND_URL'] = backendUrl;
+  }
+
+  const firebaseKeys = [
+    'API_KEY',
+    'AUTH_DOMAIN',
+    'PROJECT_ID',
+    'STORAGE_BUCKET',
+    'MESSAGING_SENDER_ID',
+    'APP_ID',
+    'MEASUREMENT_ID',
+  ];
+  for (const fbKey of firebaseKeys) {
+    const rawKey = `FIREBASE_${fbKey}`;
+    const expoKey = `EXPO_PUBLIC_FIREBASE_${fbKey}`;
+    const val = env[rawKey] || env[expoKey] || '';
+    if (val) {
+      env[rawKey] = val;
+      env[expoKey] = val;
     }
   }
 
@@ -22,7 +61,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
-    envPrefix: ['VITE_', 'EXPO_PUBLIC_'],
+    envPrefix: ['VITE_', 'EXPO_PUBLIC_', 'API_', 'BACKEND_', 'FIREBASE_'],
     define: defineMap,
     resolve: {
       alias: {

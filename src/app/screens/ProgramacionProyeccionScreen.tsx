@@ -771,8 +771,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     if (!cineId) return;
     try {
       setSyncing(true);
-      const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "/api";
-      const apiToken = process.env.EXPO_PUBLIC_API_TOKEN || "";
+      const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || process.env.API_URL || "/api";
+      const apiToken = process.env.EXPO_PUBLIC_API_TOKEN || process.env.API_TOKEN || "";
       
       const response = await fetch(`${API_BASE_URL}/showtimes/sync`, {
         method: "POST",
