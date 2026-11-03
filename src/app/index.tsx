@@ -831,7 +831,8 @@ export default function Home() {
 
     const items = SUB_TABS[mainTab as keyof typeof SUB_TABS];
     return (
-      <div className="mb-4 flex items-center gap-1.5 overflow-x-auto pb-1">
+      <div className="mb-4 overflow-x-auto pb-1">
+        <div className="mx-auto flex w-max items-center gap-1.5">
         {items.map((subItem) => {
           let isSubActive = false;
           let onSubPress = () => {};
@@ -875,6 +876,7 @@ export default function Home() {
             </button>
           );
         })}
+        </div>
       </div>
     );
   }

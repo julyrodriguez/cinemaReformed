@@ -3091,9 +3091,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         <ScrollView ref={verticalScrollRef} style={styles.verticalScrollView} bounces={false}>
 
           {/* Days Tabs Selection & Controls Toolbar */}
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-2.5 mb-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            {/* Days Chips */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-2.5 mb-3 flex flex-col gap-2.5">
+            {/* Days Chips (centered) */}
+            <div className="overflow-x-auto pb-0.5">
+              <div className="mx-auto flex w-max items-center gap-1.5">
               {DAYS_OF_WEEK.map((day) => {
                 const isActive = selectedDay === day.key;
                 return (
@@ -3111,10 +3112,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   </button>
                 );
               })}
+              </div>
             </div>
 
-            {/* Right Controls */}
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Controls (centered row below days) */}
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2.5 border-t border-slate-100 dark:border-zinc-800">
               {/* Ajustar horarios de salida toggle */}
               <div className="flex items-center gap-1">
                 <button
