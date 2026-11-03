@@ -120,6 +120,7 @@ export default function NavHeader({
 }: Props) {
   const [internalTheme, setInternalTheme] = useState<"light" | "dark">("light");
   const [modalVisible, setModalVisible] = useState(false);
+  const [isScrolledDown, setIsScrolledDown] = useState(false);
 
   useEffect(() => {
     setInternalTheme(getSavedTheme());
@@ -138,6 +139,48 @@ export default function NavHeader({
       saveTheme(next);
     }
   }, [onToggleTheme, activeTheme]);
+
+  // Listener para ocultar la barra de novedades apenas se scrollea hacia abajo
+  // y volver a mostrarla cuando se vuelve todo hacia arriba
+  useEffect(() => {
+    const handleScroll = (e: Event) => {
+      const target = e.target;
+      let st = 0;
+      if (
+        target === document ||
+        target === document.documentElement ||
+        target === document.body
+      ) {
+        st =
+          window.scrollY ||
+          document.documentElement.scrollTop ||
+          document.body.scrollTop ||
+          0;
+      } else if (target && typeof (target as any).scrollTop === "number") {
+        st = (target as HTMLElement).scrollTop;
+      }
+
+      // Apenas scrollea hacia abajo (> 10px) se oculta; si vuelve todo arriba (<= 5px) aparece
+      if (st > 10) {
+        setIsScrolledDown(true);
+      } else if (st <= 5) {
+        setIsScrolledDown(false);
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, {
+      capture: true,
+      passive: true,
+    });
+    return () => {
+      window.removeEventListener("scroll", handleScroll, { capture: true });
+    };
+  }, []);
+
+  // Al cambiar de sección, restablecer la barra de novedades como visible
+  useEffect(() => {
+    setIsScrolledDown(false);
+  }, [sectionLabel, subSectionLabel]);
 
   const news = newsItems && newsItems.length > 0 ? newsItems : DEFAULT_NEWS;
   const tickerItems = useMemo(() => [...news, ...news, ...news], [news]);
@@ -207,103 +250,108 @@ export default function NavHeader({
         </div>
       </header>
 
-      {/* Wall Street Stock Market Style Ticker Tape (below header, compact, continuous scroll to left) */}
-      <div className="sticky top-14 z-20 flex h-7 w-full shrink-0 items-center overflow-hidden border-b border-slate-800/90 bg-slate-950 text-slate-100 dark:border-zinc-800/90 dark:bg-black select-none">
-        {/* Left Fixed Live Badge */}
-        <button
-          type="button"
-          onClick={() => setModalVisible(true)}
-          className="z-20 flex h-full shrink-0 items-center gap-1.5 border-r border-slate-800 dark:border-zinc-800 bg-slate-950 dark:bg-black px-2.5 text-[10px] font-black tracking-wider text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
-          title="Ver registro completo de novedades"
-        >
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
-          </span>
-          <span className="font-mono text-[10px] font-black tracking-wider text-emerald-400">
-            LIVE
-          </span>
-          <span className="hidden sm:inline font-mono text-[9px] font-semibold text-slate-400 dark:text-zinc-500">
-            TICKER
-          </span>
-        </button>
+      {/* Wall Street Stock Market Style Ticker Tape (se oculta al scrollear hacia abajo y reaparece arriba del todo) */}
+      <div
+        className={`sticky top-14 z-20 w-full shrink-0 overflow-hidden select-none transition-all duration-300 ease-in-out ${
+          isScrolledDown
+            ? "max-h-0 h-0 opacity-0 border-b-0 pointer-events-none"
+            : "max-h-7 h-7 opacity-100 border-b border-slate-800/90 dark:border-zinc-800/90 bg-slate-950 dark:bg-black text-slate-100"
+        }`}
+      >
+        <div className="flex h-7 w-full items-center overflow-hidden">
+          {/* Left Fixed Badge: NOVEDADES */}
+          <button
+            type="button"
+            onClick={() => setModalVisible(true)}
+            className="z-20 flex h-full shrink-0 items-center gap-1.5 border-r border-slate-800 dark:border-zinc-800 bg-slate-950 dark:bg-black px-2.5 text-[10px] font-black tracking-wider text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+            title="Ver registro completo de novedades"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+            </span>
+            <span className="font-mono text-[10px] font-black tracking-wider text-emerald-400">
+              NOVEDADES
+            </span>
+          </button>
 
-        {/* Gradient fade on left near the badge */}
-        <div className="pointer-events-none absolute left-[56px] sm:left-[96px] top-0 bottom-0 w-6 z-10 bg-gradient-to-r from-slate-950 dark:from-black to-transparent" />
+          {/* Infinite Scrolling Ticker Track */}
+          <div className="relative flex-1 overflow-hidden h-full flex items-center">
+            {/* Gradient fade on left inside the track */}
+            <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-6 z-10 bg-gradient-to-r from-slate-950 dark:from-black to-transparent" />
 
-        {/* Infinite Scrolling Ticker Track */}
-        <div className="relative flex-1 overflow-hidden h-full flex items-center">
-          <div className="animate-ticker">
-            {/* Copy A */}
-            <div className="flex items-center shrink-0">
-              {tickerItems.map((item, idx) => (
-                <button
-                  key={`ticker-a-${item.id}-${idx}`}
-                  type="button"
-                  onClick={() => setModalVisible(true)}
-                  className="inline-flex items-center gap-2 px-3.5 py-0.5 text-left transition-colors hover:bg-white/10 dark:hover:bg-white/5 cursor-pointer"
-                  title="Clic para ver detalle"
-                >
-                  <span
-                    className="inline-flex items-center gap-0.5 font-mono text-[10px] font-black tracking-tight"
-                    style={{ color: item.badgeColor }}
+            <div className="animate-ticker">
+              {/* Copy A */}
+              <div className="flex items-center shrink-0">
+                {tickerItems.map((item, idx) => (
+                  <button
+                    key={`ticker-a-${item.id}-${idx}`}
+                    type="button"
+                    onClick={() => setModalVisible(true)}
+                    className="inline-flex items-center gap-2 px-3.5 py-0.5 text-left transition-colors hover:bg-white/10 dark:hover:bg-white/5 cursor-pointer"
+                    title="Clic para ver detalle"
                   >
-                    <span>▲</span>
-                    <span>{item.ticker.replace(" ▲", "")}</span>
-                  </span>
+                    <span
+                      className="inline-flex items-center gap-0.5 font-mono text-[10px] font-black tracking-tight"
+                      style={{ color: item.badgeColor }}
+                    >
+                      <span>▲</span>
+                      <span>{item.ticker.replace(" ▲", "")}</span>
+                    </span>
 
-                  <span className="font-bold text-[11px] text-white dark:text-zinc-200 tracking-tight">
-                    {item.tag}:
-                  </span>
+                    <span className="font-bold text-[11px] text-white dark:text-zinc-200 tracking-tight">
+                      {item.tag}:
+                    </span>
 
-                  <span className="text-[11px] text-slate-300 dark:text-zinc-400 font-normal">
-                    {item.message}
-                  </span>
+                    <span className="text-[11px] text-slate-300 dark:text-zinc-400 font-normal">
+                      {item.message}
+                    </span>
 
-                  <span className="text-slate-600 dark:text-zinc-700 text-xs mx-1.5 select-none">
-                    ✦
-                  </span>
-                </button>
-              ))}
+                    <span className="text-slate-600 dark:text-zinc-700 text-xs mx-1.5 select-none">
+                      ✦
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Copy B (identical copy for continuous, seamless infinite loop) */}
+              <div className="flex items-center shrink-0" aria-hidden="true">
+                {tickerItems.map((item, idx) => (
+                  <button
+                    key={`ticker-b-${item.id}-${idx}`}
+                    type="button"
+                    onClick={() => setModalVisible(true)}
+                    className="inline-flex items-center gap-2 px-3.5 py-0.5 text-left transition-colors hover:bg-white/10 dark:hover:bg-white/5 cursor-pointer"
+                    tabIndex={-1}
+                  >
+                    <span
+                      className="inline-flex items-center gap-0.5 font-mono text-[10px] font-black tracking-tight"
+                      style={{ color: item.badgeColor }}
+                    >
+                      <span>▲</span>
+                      <span>{item.ticker.replace(" ▲", "")}</span>
+                    </span>
+
+                    <span className="font-bold text-[11px] text-white dark:text-zinc-200 tracking-tight">
+                      {item.tag}:
+                    </span>
+
+                    <span className="text-[11px] text-slate-300 dark:text-zinc-400 font-normal">
+                      {item.message}
+                    </span>
+
+                    <span className="text-slate-600 dark:text-zinc-700 text-xs mx-1.5 select-none">
+                      ✦
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Copy B (identical copy for continuous, seamless infinite loop) */}
-            <div className="flex items-center shrink-0" aria-hidden="true">
-              {tickerItems.map((item, idx) => (
-                <button
-                  key={`ticker-b-${item.id}-${idx}`}
-                  type="button"
-                  onClick={() => setModalVisible(true)}
-                  className="inline-flex items-center gap-2 px-3.5 py-0.5 text-left transition-colors hover:bg-white/10 dark:hover:bg-white/5 cursor-pointer"
-                  tabIndex={-1}
-                >
-                  <span
-                    className="inline-flex items-center gap-0.5 font-mono text-[10px] font-black tracking-tight"
-                    style={{ color: item.badgeColor }}
-                  >
-                    <span>▲</span>
-                    <span>{item.ticker.replace(" ▲", "")}</span>
-                  </span>
-
-                  <span className="font-bold text-[11px] text-white dark:text-zinc-200 tracking-tight">
-                    {item.tag}:
-                  </span>
-
-                  <span className="text-[11px] text-slate-300 dark:text-zinc-400 font-normal">
-                    {item.message}
-                  </span>
-
-                  <span className="text-slate-600 dark:text-zinc-700 text-xs mx-1.5 select-none">
-                    ✦
-                  </span>
-                </button>
-              ))}
-            </div>
+            {/* Gradient fade on right edge inside track */}
+            <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-l from-slate-950 dark:from-black to-transparent" />
           </div>
         </div>
-
-        {/* Gradient fade on right edge */}
-        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-l from-slate-950 dark:from-black to-transparent" />
       </div>
 
       {/* Modal de Novedades y Actualizaciones */}

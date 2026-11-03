@@ -513,7 +513,7 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100">
-                  Cue Sheet de Créditos y Postcréditos
+                  Créditos y Poscréditos
                 </h2>
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">
                   {showingSearch
@@ -766,7 +766,7 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100">
-                      {editingId ? "Editar Cue de Crédito" : "Nuevo Cue de Crédito"}
+                      {editingId ? "Editar Crédito y Poscrédito" : "Nuevo Crédito y Poscrédito"}
                     </h2>
                     <p className="text-[11px] text-slate-500 dark:text-zinc-400">
                       Programación de encendido/apagado de luces (HH:mm:ss)
