@@ -91,6 +91,7 @@ export interface SpeakerCheckItem {
   estado: SpeakerStatus;
   observacion: string;
   accionSeguimiento: string;
+  noTiene?: boolean;
 }
 
 export interface SavedMonthlySpeakers {
@@ -102,16 +103,22 @@ export interface SavedMonthlySpeakers {
   updatedAt?: string;
 }
 
-function buildDefaultRoomSpeakers(): SpeakerCheckItem[] {
+function buildDefaultRoomSpeakers(disabledIds: SpeakerId[] = []): SpeakerCheckItem[] {
+  const disabledSet = new Set(disabledIds);
   return SPEAKERS_5_1.map((sp) => ({
     id: sp.id,
     estado: "Óptimo",
     observacion: "",
     accionSeguimiento: "",
+    noTiene: disabledSet.has(sp.id),
   }));
 }
 
-function normalizeRoomSpeakers(rawList?: SpeakerCheckItem[]): SpeakerCheckItem[] {
+function normalizeRoomSpeakers(
+  rawList?: SpeakerCheckItem[],
+  disabledIds: SpeakerId[] = []
+): SpeakerCheckItem[] {
+  const disabledSet = new Set(disabledIds);
   const map = new Map<string, SpeakerCheckItem>();
   if (Array.isArray(rawList)) {
     rawList.forEach((item) => {
@@ -121,18 +128,25 @@ function normalizeRoomSpeakers(rawList?: SpeakerCheckItem[]): SpeakerCheckItem[]
           estado: item.estado === "Con falla" ? "Con falla" : "Óptimo",
           observacion: item.observacion || "",
           accionSeguimiento: item.accionSeguimiento || "",
+          noTiene: item.noTiene !== undefined ? !!item.noTiene : disabledSet.has(item.id as SpeakerId),
         });
       }
     });
   }
   return SPEAKERS_5_1.map((sp) => {
     const existing = map.get(sp.id);
-    if (existing) return existing;
+    if (existing) {
+      return {
+        ...existing,
+        noTiene: existing.noTiene || disabledSet.has(sp.id),
+      };
+    }
     return {
       id: sp.id,
       estado: "Óptimo",
       observacion: "",
       accionSeguimiento: "",
+      noTiene: disabledSet.has(sp.id),
     };
   });
 }
@@ -183,6 +197,9 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
 
   // Estado principal de parlantes por sala
   const [salasData, setSalasData] = useState<Record<string, SpeakerCheckItem[]>>({});
+  const [disabledBySala, setDisabledBySala] = useState<Record<string, SpeakerId[]>>({});
+  const [isEditingRoomConfig, setIsEditingRoomConfig] = useState<boolean>(false);
+  const [savingRoomConfig, setSavingRoomConfig] = useState<boolean>(false);
 
   // Filtros e interacción en la planilla
   const [filterMode, setFilterMode] = useState<"ALL" | "FALLA">("ALL");
@@ -287,6 +304,18 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
     if (!cineId) return;
     setLoading(true);
     try {
+      // Cargar configuración persistente de parlantes inexistentes por sala del cine
+      let loadedDisabledMap: Record<string, SpeakerId[]> = {};
+      try {
+        const cfgRef = doc(db, CINES_COLLECTION, cineId, "config", "parlantes_salas");
+        const cfgSnap = await getDoc(cfgRef);
+        if (cfgSnap.exists() && cfgSnap.data()?.disabledBySala) {
+          loadedDisabledMap = cfgSnap.data().disabledBySala || {};
+        }
+      } catch (cfgErr) {
+        console.warn("No se pudo leer config/parlantes_salas:", cfgErr);
+      }
+
       const docRef = doc(db, CINES_COLLECTION, cineId, "control_mensual_parlantes", selectedMesAno);
       const docSnap = await getDoc(docRef);
 
@@ -299,8 +328,16 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
         const loadedSalas: Record<string, SpeakerCheckItem[]> = {};
         for (let i = 1; i <= salasCount; i++) {
           const key = String(i);
-          loadedSalas[key] = normalizeRoomSpeakers(data.salas?.[key]);
+          const roomDisabled = loadedDisabledMap[key] || [];
+          const normalized = normalizeRoomSpeakers(data.salas?.[key], roomDisabled);
+          loadedSalas[key] = normalized;
+          // Sincronizar disabledMap con lo guardado en el mes si existían parlantes marcados noTiene
+          const fromDocDisabled = normalized.filter((s) => s.noTiene).map((s) => s.id);
+          if (fromDocDisabled.length > 0 && (!loadedDisabledMap[key] || loadedDisabledMap[key].length === 0)) {
+            loadedDisabledMap[key] = fromDocDisabled;
+          }
         }
+        setDisabledBySala(loadedDisabledMap);
         setSalasData(loadedSalas);
         setIsSavedInDb(true);
         setCarriedFromPrevMonth(false);
@@ -326,18 +363,25 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
           }
           for (let i = 1; i <= salasCount; i++) {
             const key = String(i);
-            const normalized = normalizeRoomSpeakers(prevData.salas?.[key]);
-            if (normalized.some((s) => s.estado === "Con falla" || s.accionSeguimiento.trim() !== "")) {
+            const roomDisabled = loadedDisabledMap[key] || [];
+            const normalized = normalizeRoomSpeakers(prevData.salas?.[key], roomDisabled);
+            if (
+              normalized.some(
+                (s) => !s.noTiene && (s.estado === "Con falla" || s.accionSeguimiento.trim() !== "")
+              )
+            ) {
               foundCarryOver = true;
             }
             initialSalas[key] = normalized;
           }
         } else {
           for (let i = 1; i <= salasCount; i++) {
-            initialSalas[String(i)] = buildDefaultRoomSpeakers();
+            const key = String(i);
+            initialSalas[key] = buildDefaultRoomSpeakers(loadedDisabledMap[key] || []);
           }
         }
 
+        setDisabledBySala(loadedDisabledMap);
         setSalasData(initialSalas);
         setCarriedFromPrevMonth(foundCarryOver);
       }
@@ -348,7 +392,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
     }
   };
 
-  // ─── Estadísticas y Resumen Global ─────────────────────────────────────────
+  // ─── Estadísticas y Resumen Global (Excluyendo parlantes que la sala no tiene) ─
 
   const stats = useMemo(() => {
     let totalSpeakers = 0;
@@ -356,14 +400,18 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
     let totalFallas = 0;
     let salasConFalla = 0;
     const fallasPorSala: Record<string, number> = {};
+    const activosPorSala: Record<string, number> = {};
     const allFallasList: Array<{ sala: string; item: SpeakerCheckItem; meta: SpeakerMeta }> = [];
 
     for (let i = 1; i <= salasCount; i++) {
       const key = String(i);
-      const list = salasData[key] || buildDefaultRoomSpeakers();
+      const list = salasData[key] || buildDefaultRoomSpeakers(disabledBySala[key] || []);
       let roomFallas = 0;
+      let roomActivos = 0;
 
       list.forEach((sp) => {
+        if (sp.noTiene) return; // Ignorar parlantes que la sala no tiene
+        roomActivos++;
         totalSpeakers++;
         if (sp.estado === "Con falla") {
           totalFallas++;
@@ -376,6 +424,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
       });
 
       fallasPorSala[key] = roomFallas;
+      activosPorSala[key] = roomActivos;
       if (roomFallas > 0) salasConFalla++;
     }
 
@@ -388,10 +437,67 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
       salasConFalla,
       salasOptimas: salasCount - salasConFalla,
       fallasPorSala,
+      activosPorSala,
       allFallasList,
       healthPct,
     };
-  }, [salasData, salasCount]);
+  }, [salasData, salasCount, disabledBySala]);
+
+  // ─── Configurar qué parlantes tiene o no tiene una Sala ────────────────────
+
+  const handleToggleSpeakerExistsInSala = async (salaKey: string, speakerId: SpeakerId) => {
+    if (readOnly || salaKey === "RESUMEN") return;
+
+    const currentRoomList =
+      salasData[salaKey] || buildDefaultRoomSpeakers(disabledBySala[salaKey] || []);
+    const targetItem = currentRoomList.find((x) => x.id === speakerId);
+    const nextNoTiene = !(targetItem?.noTiene ?? false);
+
+    const updatedRoomList = currentRoomList.map((item) =>
+      item.id === speakerId
+        ? {
+            ...item,
+            noTiene: nextNoTiene,
+            // Si pasa a "no tiene", limpiamos estado de falla para que no quede colgado
+            estado: nextNoTiene ? ("Óptimo" as SpeakerStatus) : item.estado,
+          }
+        : item
+    );
+
+    const nextDisabledForSala = updatedRoomList
+      .filter((x) => x.noTiene)
+      .map((x) => x.id);
+
+    const nextDisabledMap = {
+      ...disabledBySala,
+      [salaKey]: nextDisabledForSala,
+    };
+
+    setSalasData((prev) => ({
+      ...prev,
+      [salaKey]: updatedRoomList,
+    }));
+    setDisabledBySala(nextDisabledMap);
+
+    if (cineId) {
+      try {
+        setSavingRoomConfig(true);
+        const cfgRef = doc(db, CINES_COLLECTION, cineId, "config", "parlantes_salas");
+        await setDoc(
+          cfgRef,
+          {
+            disabledBySala: nextDisabledMap,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.error("Error al guardar configuración de parlantes de sala:", err);
+      } finally {
+        setSavingRoomConfig(false);
+      }
+    }
+  };
 
   // ─── Actualización de Estado de Parlantes ──────────────────────────────────
 
@@ -442,7 +548,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
     if (readOnly || selectedSala === "RESUMEN") return;
     setSalasData((prev) => ({
       ...prev,
-      [selectedSala]: buildDefaultRoomSpeakers(),
+      [selectedSala]: buildDefaultRoomSpeakers(disabledBySala[selectedSala] || []),
     }));
     setShowResetRoomModal(false);
   };
@@ -462,12 +568,13 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
       const cleanSalas: Record<string, SpeakerCheckItem[]> = {};
       for (let i = 1; i <= salasCount; i++) {
         const key = String(i);
-        const list = normalizeRoomSpeakers(salasData[key]);
+        const list = normalizeRoomSpeakers(salasData[key], disabledBySala[key] || []);
         cleanSalas[key] = list.map((sp) => ({
           id: sp.id,
-          estado: sp.estado,
-          observacion: (sp.observacion || "").trim(),
-          accionSeguimiento: (sp.accionSeguimiento || "").trim(),
+          estado: sp.noTiene ? "Óptimo" : sp.estado,
+          observacion: sp.noTiene ? "" : (sp.observacion || "").trim(),
+          accionSeguimiento: sp.noTiene ? "" : (sp.accionSeguimiento || "").trim(),
+          noTiene: !!sp.noTiene,
         }));
       }
 
@@ -533,14 +640,15 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
         .join("");
     }
 
-    // 2. Planilla detallada por cada Sala
+    // 2. Planilla detallada por cada Sala (excluyendo parlantes que la sala no tiene)
     let salasDetailHtml = "";
     for (let i = 1; i <= salasCount; i++) {
       const key = String(i);
-      const list = normalizeRoomSpeakers(salasData[key]);
-      const fallasCount = list.filter((x) => x.estado === "Con falla").length;
+      const fullList = normalizeRoomSpeakers(salasData[key], disabledBySala[key] || []);
+      const activeList = fullList.filter((x) => !x.noTiene);
+      const fallasCount = activeList.filter((x) => x.estado === "Con falla").length;
 
-      const rowsHtml = list
+      const rowsHtml = activeList
         .map((sp) => {
           const meta = SPEAKERS_5_1.find((m) => m.id === sp.id);
           const isFalla = sp.estado === "Con falla";
@@ -561,7 +669,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
       salasDetailHtml += `
         <div class="room-block">
           <div class="room-header">
-            <span>SALA ${key} — CONFIGURACIÓN 5.1 (21 PARLANTES)</span>
+            <span>SALA ${key} — CONFIGURACIÓN 5.1 (${activeList.length} PARLANTES)</span>
             <span class="${fallasCount > 0 ? "badge-falla" : "badge-ok"}">
               ${fallasCount > 0 ? `${fallasCount} CON FALLA` : "100% ÓPTIMO"}
             </span>
@@ -894,8 +1002,8 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
 
   const currentRoomSpeakers = useMemo(() => {
     if (selectedSala === "RESUMEN") return buildDefaultRoomSpeakers();
-    return normalizeRoomSpeakers(salasData[selectedSala]);
-  }, [salasData, selectedSala]);
+    return normalizeRoomSpeakers(salasData[selectedSala], disabledBySala[selectedSala] || []);
+  }, [salasData, selectedSala, disabledBySala]);
 
   const speakerMapById = useMemo(() => {
     const map: Record<string, SpeakerCheckItem> = {};
@@ -907,14 +1015,16 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
 
   const filteredRoomSpeakers = useMemo(() => {
     return currentRoomSpeakers.filter((sp) => {
-      if (filterMode === "FALLA" && sp.estado !== "Con falla") return false;
+      // En modo normal ocultamos los parlantes que la sala no tiene
+      if (!isEditingRoomConfig && sp.noTiene) return false;
+      if (!isEditingRoomConfig && filterMode === "FALLA" && sp.estado !== "Con falla") return false;
       if (zoneFilter !== "ALL") {
         const meta = SPEAKERS_5_1.find((m) => m.id === sp.id);
         if (meta?.zone !== zoneFilter) return false;
       }
       return true;
     });
-  }, [currentRoomSpeakers, filterMode, zoneFilter]);
+  }, [currentRoomSpeakers, filterMode, zoneFilter, isEditingRoomConfig]);
 
   const renderDiagramSpeakerNode = (
     id: SpeakerId,
@@ -925,18 +1035,31 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
       estado: "Óptimo",
       observacion: "",
       accionSeguimiento: "",
+      noTiene: false,
     };
-    const isFalla = item.estado === "Con falla";
+    const isMissing = !!item.noTiene;
+    const isFalla = !isMissing && item.estado === "Con falla";
     const isSelected = highlightedSpeaker === id;
 
     let baseBg = "#E59824";
     if (variant === "sw") baseBg = "#8B8046";
     if (variant === "screen") baseBg = "#2B7BBA";
 
-    const bgColor = isFalla ? "#DC2626" : baseBg;
-    const borderColor = isSelected ? "#0F172A" : isFalla ? "#991B1B" : "#1E3A5F";
+    const bgColor = isMissing ? "#94A3B8" : isFalla ? "#DC2626" : baseBg;
+    const borderColor = isSelected
+      ? "#0F172A"
+      : isMissing
+      ? "#475569"
+      : isFalla
+      ? "#991B1B"
+      : "#1E3A5F";
 
     const handlePressNode = () => {
+      if (isEditingRoomConfig) {
+        handleToggleSpeakerExistsInSala(selectedSala, id);
+        return;
+      }
+      if (isMissing) return;
       setHighlightedSpeaker(id);
       if (mapClickTogglesState && !readOnly && selectedSala !== "RESUMEN") {
         handleToggleSpeakerStatus(selectedSala, id);
@@ -947,6 +1070,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
       <TouchableOpacity
         key={id}
         onPress={handlePressNode}
+        disabled={!isEditingRoomConfig && isMissing}
         activeOpacity={0.8}
         // @ts-ignore web className for smooth animation
         className={`cp-speaker-node ${isFalla ? "cp-speaker-fault" : ""}`}
@@ -960,22 +1084,39 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
             backgroundColor: bgColor,
             borderColor,
             borderWidth: isSelected ? 2.5 : 1.5,
+            borderStyle: isMissing ? "dashed" : "solid",
+            opacity: isMissing ? (isEditingRoomConfig ? 0.55 : 0.2) : 1,
           },
         ]}
       >
-        <Text style={s.diagramNodeText}>{id}</Text>
-        <View
+        <Text
           style={[
-            s.diagramStatusDot,
-            { backgroundColor: isFalla ? "#FEF2F2" : "#10B981" },
+            s.diagramNodeText,
+            isMissing && { textDecorationLine: "line-through", color: "#F1F5F9" },
           ]}
         >
-          <MaterialCommunityIcons
-            name={isFalla ? "alert" : "check"}
-            size={9}
-            color={isFalla ? "#DC2626" : "#FFFFFF"}
-          />
-        </View>
+          {id}
+        </Text>
+        {(!isMissing || isEditingRoomConfig) && (
+          <View
+            style={[
+              s.diagramStatusDot,
+              {
+                backgroundColor: isMissing
+                  ? "#475569"
+                  : isFalla
+                  ? "#FEF2F2"
+                  : "#10B981",
+              },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name={isMissing ? "close" : isFalla ? "alert" : "check"}
+              size={9}
+              color={isMissing ? "#FFFFFF" : isFalla ? "#DC2626" : "#FFFFFF"}
+            />
+          </View>
+        )}
       </TouchableOpacity>
     );
   };
@@ -984,6 +1125,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
 
   const render51VisualDiagram = () => {
     const roomFallas = stats.fallasPorSala[selectedSala] || 0;
+    const roomActivos = stats.activosPorSala[selectedSala] ?? 21;
 
     return (
       <View style={s.diagramCard}>
@@ -998,57 +1140,76 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
               </Text>
             </View>
 
-            <View style={s.modeSegmentedTrack}>
-              <TouchableOpacity
-                onPress={() => setMapClickTogglesState(true)}
-                activeOpacity={0.85}
-                style={[
-                  s.modeSegmentedOption,
-                  mapClickTogglesState && s.modeSegmentedOptionActive,
-                ]}
+            {isEditingRoomConfig ? (
+              <View
+                style={{
+                  backgroundColor: COLORS.warningBg,
+                  borderWidth: 1,
+                  borderColor: COLORS.warningBorder,
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 8,
+                }}
               >
-                <MaterialCommunityIcons
-                  name="gesture-tap-button"
-                  size={13}
-                  color={mapClickTogglesState ? "#FFFFFF" : COLORS.muted}
-                />
-                <Text
+                <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.warning }}>
+                  Editando parlantes
+                </Text>
+              </View>
+            ) : (
+              <View style={s.modeSegmentedTrack}>
+                <TouchableOpacity
+                  onPress={() => setMapClickTogglesState(true)}
+                  activeOpacity={0.85}
                   style={[
-                    s.modeSegmentedText,
-                    mapClickTogglesState && s.modeSegmentedTextActive,
+                    s.modeSegmentedOption,
+                    mapClickTogglesState && s.modeSegmentedOptionActive,
                   ]}
                 >
-                  Alternar
-                </Text>
-              </TouchableOpacity>
+                  <MaterialCommunityIcons
+                    name="gesture-tap-button"
+                    size={13}
+                    color={mapClickTogglesState ? "#FFFFFF" : COLORS.muted}
+                  />
+                  <Text
+                    style={[
+                      s.modeSegmentedText,
+                      mapClickTogglesState && s.modeSegmentedTextActive,
+                    ]}
+                  >
+                    Alternar
+                  </Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={() => setMapClickTogglesState(false)}
-                activeOpacity={0.85}
-                style={[
-                  s.modeSegmentedOption,
-                  !mapClickTogglesState && s.modeSegmentedOptionActiveNeutral,
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name="eye-outline"
-                  size={13}
-                  color={!mapClickTogglesState ? COLORS.text : COLORS.muted}
-                />
-                <Text
+                <TouchableOpacity
+                  onPress={() => setMapClickTogglesState(false)}
+                  activeOpacity={0.85}
                   style={[
-                    s.modeSegmentedText,
-                    !mapClickTogglesState && s.modeSegmentedTextActiveNeutral,
+                    s.modeSegmentedOption,
+                    !mapClickTogglesState && s.modeSegmentedOptionActiveNeutral,
                   ]}
                 >
-                  Ver fila
-                </Text>
-              </TouchableOpacity>
-            </View>
+                  <MaterialCommunityIcons
+                    name="eye-outline"
+                    size={13}
+                    color={!mapClickTogglesState ? COLORS.text : COLORS.muted}
+                  />
+                  <Text
+                    style={[
+                      s.modeSegmentedText,
+                      !mapClickTogglesState && s.modeSegmentedTextActiveNeutral,
+                    ]}
+                  >
+                    Ver fila
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           <Text style={s.diagramCardSub}>
-            {mapClickTogglesState
+            {isEditingRoomConfig
+              ? "Tocá cualquier parlante para activar o quitarlo de esta sala"
+              : mapClickTogglesState
               ? "Tocá un parlante para cambiar su estado (Óptimo / Con falla)"
               : "Tocá un parlante para resaltarlo en la planilla"}
           </Text>
@@ -1136,7 +1297,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                   ]}
                 >
                   {roomFallas === 0
-                    ? "21/21 ÓPTIMOS"
+                    ? `${roomActivos}/${roomActivos} ÓPTIMOS`
                     : `${roomFallas} CON FALLA`}
                 </Text>
               </View>
@@ -1389,9 +1550,10 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
             {Array.from({ length: salasCount }, (_, idx) => {
               const salaKey = String(idx + 1);
               const isSelected = selectedSala === salaKey;
+              const activos = stats.activosPorSala[salaKey] ?? 21;
               const fallas = stats.fallasPorSala[salaKey] || 0;
-              const optimos = 21 - fallas;
-              const okPct = ((optimos / 21) * 100).toFixed(0);
+              const optimos = Math.max(0, activos - fallas);
+              const okPct = activos > 0 ? ((optimos / activos) * 100).toFixed(0) : "100";
 
               return (
                 <button
@@ -1439,7 +1601,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                       {okPct}%
                     </span>
                     <span className="text-slate-400 dark:text-zinc-500 text-[9px]">
-                      ({optimos}/21)
+                      ({optimos}/{activos})
                     </span>
                   </div>
                 </button>
@@ -1581,21 +1743,78 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                       Planilla de Parlantes — Sala {selectedSala}
                     </Text>
                     <Text style={s.tableHeaderSub}>
-                      SW1-SW4 • L/C/R • LS1-LS7 • RS1-RS7 (21 canales)
+                      SW1-SW4 • L/C/R • LS1-LS7 • RS1-RS7 ({stats.activosPorSala[selectedSala] ?? 21} canales activos)
                     </Text>
                   </View>
                 </View>
 
-                {!readOnly && (stats.fallasPorSala[selectedSala] || 0) > 0 && (
-                  <TouchableOpacity
-                    onPress={() => setShowResetRoomModal(true)}
-                    style={s.markAllOkBtn}
-                  >
-                    <MaterialCommunityIcons name="check-all" size={15} color={COLORS.success} />
-                    <Text style={s.markAllOkBtnText}>Marcar Sala Óptima</Text>
-                  </TouchableOpacity>
-                )}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {!readOnly && (
+                    <TouchableOpacity
+                      onPress={() => setIsEditingRoomConfig((v) => !v)}
+                      style={[
+                        s.markAllOkBtn,
+                        isEditingRoomConfig
+                          ? {
+                              backgroundColor: COLORS.primary,
+                              borderColor: COLORS.primary,
+                            }
+                          : {
+                              backgroundColor: COLORS.bgMobile,
+                              borderColor: COLORS.border,
+                            },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={isEditingRoomConfig ? "check-bold" : "cog-outline"}
+                        size={15}
+                        color={isEditingRoomConfig ? "#FFFFFF" : COLORS.text}
+                      />
+                      <Text
+                        style={[
+                          s.markAllOkBtnText,
+                          { color: isEditingRoomConfig ? "#FFFFFF" : COLORS.text },
+                        ]}
+                      >
+                        {isEditingRoomConfig ? "Finalizar Edición" : "Editar Sala"}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {!readOnly && !isEditingRoomConfig && (stats.fallasPorSala[selectedSala] || 0) > 0 && (
+                    <TouchableOpacity
+                      onPress={() => setShowResetRoomModal(true)}
+                      style={s.markAllOkBtn}
+                    >
+                      <MaterialCommunityIcons name="check-all" size={15} color={COLORS.success} />
+                      <Text style={s.markAllOkBtnText}>Marcar Sala Óptima</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
+
+              {isEditingRoomConfig && (
+                <View
+                  style={{
+                    backgroundColor: COLORS.primarySoft,
+                    borderWidth: 1,
+                    borderColor: COLORS.primary,
+                    borderRadius: 10,
+                    padding: 10,
+                    marginBottom: 12,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <MaterialCommunityIcons name="tune-variant" size={18} color={COLORS.primary} />
+                  <Text style={{ fontSize: 12, color: COLORS.text, fontWeight: "700", flex: 1 }}>
+                    Modo Edición de Sala {selectedSala}: Desmarcá los parlantes que esta sala físicamente{" "}
+                    <Text style={{ fontWeight: "900", color: COLORS.primary }}>no tiene</Text> (tocándolos en el esquema 5.1 o con el botón "Tiene / No tiene"). Los parlantes desactivados se guardan automáticamente y no aparecerán en la planilla ni en el reporte HTML/PDF.
+                  </Text>
+                  {savingRoomConfig && <ActivityIndicator size="small" color={COLORS.primary} />}
+                </View>
+              )}
 
               {/* Barra de Filtros de la Planilla */}
               <View style={s.filtersRow}>
@@ -1613,7 +1832,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                         filterMode === "ALL" && s.filterChipTextActive,
                       ]}
                     >
-                      Todos (21)
+                      Todos ({stats.activosPorSala[selectedSala] ?? 21})
                     </Text>
                   </TouchableOpacity>
 
@@ -1670,7 +1889,8 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                 <View style={{ gap: 10, marginTop: 8 }}>
                   {filteredRoomSpeakers.map((item) => {
                     const meta = SPEAKERS_5_1.find((m) => m.id === item.id)!;
-                    const isFalla = item.estado === "Con falla";
+                    const isNoTiene = Boolean(item.noTiene);
+                    const isFalla = !isNoTiene && item.estado === "Con falla";
                     const isHighlighted = highlightedSpeaker === item.id;
 
                     return (
@@ -1682,6 +1902,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                           s.mobileSpeakerCard,
                           isFalla && s.mobileSpeakerCardFalla,
                           isHighlighted && s.rowHighlighted,
+                          isNoTiene && { opacity: 0.55 },
                         ]}
                       >
                         <View style={s.mobileSpeakerHeader}>
@@ -1689,7 +1910,13 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                             <View
                               style={[
                                 s.speakerIdBadge,
-                                { backgroundColor: isFalla ? COLORS.danger : meta.color },
+                                {
+                                  backgroundColor: isNoTiene
+                                    ? "#64748B"
+                                    : isFalla
+                                    ? COLORS.danger
+                                    : meta.color,
+                                },
                               ]}
                             >
                               <Text style={s.speakerIdBadgeText}>{item.id}</Text>
@@ -1700,65 +1927,99 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                             </View>
                           </View>
 
-                          <TouchableOpacity
-                            onPress={() => handleToggleSpeakerStatus(selectedSala, item.id)}
-                            disabled={readOnly}
-                            // @ts-ignore
-                            className="cp-status-pill"
-                            style={[
-                              s.statusToggleBtn,
-                              isFalla ? s.statusToggleFalla : s.statusToggleOptimo,
-                            ]}
-                          >
-                            <MaterialCommunityIcons
-                              name={isFalla ? "alert-circle" : "check-circle"}
-                              size={15}
-                              color={isFalla ? "#DC2626" : "#059669"}
-                            />
-                            <Text
+                          {isEditingRoomConfig ? (
+                            <TouchableOpacity
+                              onPress={() =>
+                                handleToggleSpeakerExistsInSala(selectedSala, item.id)
+                              }
+                              disabled={readOnly}
                               style={[
-                                s.statusToggleText,
-                                { color: isFalla ? "#DC2626" : "#059669" },
+                                s.statusToggleBtn,
+                                isNoTiene
+                                  ? {
+                                      backgroundColor: "#F1F5F9",
+                                      borderColor: "#94A3B8",
+                                    }
+                                  : s.statusToggleOptimo,
                               ]}
                             >
-                              {item.estado}
-                            </Text>
-                          </TouchableOpacity>
+                              <MaterialCommunityIcons
+                                name={isNoTiene ? "close-circle-outline" : "check-circle"}
+                                size={15}
+                                color={isNoTiene ? "#475569" : "#059669"}
+                              />
+                              <Text
+                                style={[
+                                  s.statusToggleText,
+                                  { color: isNoTiene ? "#475569" : "#059669" },
+                                ]}
+                              >
+                                {isNoTiene ? "No tiene" : "Tiene"}
+                              </Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity
+                              onPress={() => handleToggleSpeakerStatus(selectedSala, item.id)}
+                              disabled={readOnly || isNoTiene}
+                              // @ts-ignore
+                              className="cp-status-pill"
+                              style={[
+                                s.statusToggleBtn,
+                                isFalla ? s.statusToggleFalla : s.statusToggleOptimo,
+                              ]}
+                            >
+                              <MaterialCommunityIcons
+                                name={isFalla ? "alert-circle" : "check-circle"}
+                                size={15}
+                                color={isFalla ? "#DC2626" : "#059669"}
+                              />
+                              <Text
+                                style={[
+                                  s.statusToggleText,
+                                  { color: isFalla ? "#DC2626" : "#059669" },
+                                ]}
+                              >
+                                {item.estado}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
 
-                        <View style={{ gap: 8, marginTop: 6 }}>
-                          <View>
-                            <Text style={s.mobileFieldLabel}>Observación</Text>
-                            <TextInput
-                              value={item.observacion}
-                              onChangeText={(val) =>
-                                handleUpdateSpeaker(selectedSala, item.id, "observacion", val)
-                              }
-                              placeholder="Ej: Cono con vibración / sin audio..."
-                              placeholderTextColor={COLORS.muted}
-                              style={s.mobileInput}
-                              editable={!readOnly}
-                            />
+                        {!isNoTiene && (
+                          <View style={{ gap: 8, marginTop: 6 }}>
+                            <View>
+                              <Text style={s.mobileFieldLabel}>Observación</Text>
+                              <TextInput
+                                value={item.observacion}
+                                onChangeText={(val) =>
+                                  handleUpdateSpeaker(selectedSala, item.id, "observacion", val)
+                                }
+                                placeholder="Ej: Cono con vibración / sin audio..."
+                                placeholderTextColor={COLORS.muted}
+                                style={s.mobileInput}
+                                editable={!readOnly}
+                              />
+                            </View>
+                            <View>
+                              <Text style={s.mobileFieldLabel}>Acción / Falla en seguimiento</Text>
+                              <TextInput
+                                value={item.accionSeguimiento}
+                                onChangeText={(val) =>
+                                  handleUpdateSpeaker(
+                                    selectedSala,
+                                    item.id,
+                                    "accionSeguimiento",
+                                    val
+                                  )
+                                }
+                                placeholder="Ej: En seguimiento técnico / RMA..."
+                                placeholderTextColor={COLORS.muted}
+                                style={s.mobileInput}
+                                editable={!readOnly}
+                              />
+                            </View>
                           </View>
-                          <View>
-                            <Text style={s.mobileFieldLabel}>Acción / Falla en seguimiento</Text>
-                            <TextInput
-                              value={item.accionSeguimiento}
-                              onChangeText={(val) =>
-                                handleUpdateSpeaker(
-                                  selectedSala,
-                                  item.id,
-                                  "accionSeguimiento",
-                                  val
-                                )
-                              }
-                              placeholder="Ej: En seguimiento técnico / RMA..."
-                              placeholderTextColor={COLORS.muted}
-                              style={s.mobileInput}
-                              editable={!readOnly}
-                            />
-                          </View>
-                        </View>
+                        )}
                       </View>
                     );
                   })}
@@ -1774,7 +2035,9 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                       <Text style={s.gridTh}>Zona / Canal</Text>
                     </View>
                     <View style={{ flex: 1.7, alignItems: "center" }}>
-                      <Text style={s.gridTh}>Estado</Text>
+                      <Text style={s.gridTh}>
+                        {isEditingRoomConfig ? "En la Sala" : "Estado"}
+                      </Text>
                     </View>
                     <View style={{ flex: 3.2 }}>
                       <Text style={s.gridTh}>Observación</Text>
@@ -1786,7 +2049,8 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
 
                   {filteredRoomSpeakers.map((item, idx) => {
                     const meta = SPEAKERS_5_1.find((m) => m.id === item.id)!;
-                    const isFalla = item.estado === "Con falla";
+                    const isNoTiene = Boolean(item.noTiene);
+                    const isFalla = !isNoTiene && item.estado === "Con falla";
                     const isHighlighted = highlightedSpeaker === item.id;
 
                     return (
@@ -1799,6 +2063,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                           idx % 2 === 1 && s.gridRowAlt,
                           isFalla && s.gridRowFalla,
                           isHighlighted && s.rowHighlighted,
+                          isNoTiene && { opacity: 0.55 },
                         ]}
                       >
                         {/* ID del Parlante */}
@@ -1813,7 +2078,13 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                           <View
                             style={[
                               s.speakerIdBadge,
-                              { backgroundColor: isFalla ? COLORS.danger : meta.color },
+                              {
+                                backgroundColor: isNoTiene
+                                  ? "#64748B"
+                                  : isFalla
+                                  ? COLORS.danger
+                                  : meta.color,
+                              },
                             ]}
                           >
                             <Text style={s.speakerIdBadgeText}>{item.id}</Text>
@@ -1826,7 +2097,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                           <Text style={s.zoneSubText}>{meta.zone}</Text>
                         </View>
 
-                        {/* Estado (Óptimo / Con falla) */}
+                        {/* Estado (Óptimo / Con falla) o Configuración (Tiene / No tiene) */}
                         <View
                           style={{
                             flex: 1.7,
@@ -1834,42 +2105,78 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                             justifyContent: "center",
                           }}
                         >
-                          <TouchableOpacity
-                            onPress={() => handleToggleSpeakerStatus(selectedSala, item.id)}
-                            disabled={readOnly}
-                            // @ts-ignore
-                            className="cp-status-pill"
-                            style={[
-                              s.statusToggleBtn,
-                              isFalla ? s.statusToggleFalla : s.statusToggleOptimo,
-                            ]}
-                          >
-                            <MaterialCommunityIcons
-                              name={isFalla ? "alert-circle" : "check-circle"}
-                              size={15}
-                              color={isFalla ? "#DC2626" : "#059669"}
-                            />
-                            <Text
+                          {isEditingRoomConfig ? (
+                            <TouchableOpacity
+                              onPress={() =>
+                                handleToggleSpeakerExistsInSala(selectedSala, item.id)
+                              }
+                              disabled={readOnly}
+                              // @ts-ignore
+                              className="cp-status-pill"
                               style={[
-                                s.statusToggleText,
-                                { color: isFalla ? "#DC2626" : "#059669" },
+                                s.statusToggleBtn,
+                                isNoTiene
+                                  ? {
+                                      backgroundColor: "#F1F5F9",
+                                      borderColor: "#94A3B8",
+                                    }
+                                  : s.statusToggleOptimo,
                               ]}
                             >
-                              {item.estado}
-                            </Text>
-                          </TouchableOpacity>
+                              <MaterialCommunityIcons
+                                name={isNoTiene ? "close-circle-outline" : "check-circle"}
+                                size={15}
+                                color={isNoTiene ? "#475569" : "#059669"}
+                              />
+                              <Text
+                                style={[
+                                  s.statusToggleText,
+                                  { color: isNoTiene ? "#475569" : "#059669" },
+                                ]}
+                              >
+                                {isNoTiene ? "No tiene" : "Tiene"}
+                              </Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity
+                              onPress={() => handleToggleSpeakerStatus(selectedSala, item.id)}
+                              disabled={readOnly || isNoTiene}
+                              // @ts-ignore
+                              className="cp-status-pill"
+                              style={[
+                                s.statusToggleBtn,
+                                isFalla ? s.statusToggleFalla : s.statusToggleOptimo,
+                              ]}
+                            >
+                              <MaterialCommunityIcons
+                                name={isFalla ? "alert-circle" : "check-circle"}
+                                size={15}
+                                color={isFalla ? "#DC2626" : "#059669"}
+                              />
+                              <Text
+                                style={[
+                                  s.statusToggleText,
+                                  { color: isFalla ? "#DC2626" : "#059669" },
+                                ]}
+                              >
+                                {item.estado}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
 
                         {/* Observación */}
                         <View style={{ flex: 3.2, paddingHorizontal: 6 }}>
                           <TextInput
-                            value={item.observacion}
+                            value={isNoTiene ? "" : item.observacion}
                             onFocus={() => setHighlightedSpeaker(item.id)}
                             onChangeText={(val) =>
                               handleUpdateSpeaker(selectedSala, item.id, "observacion", val)
                             }
                             placeholder={
-                              isFalla
+                              isNoTiene
+                                ? "Parlante inexistente en esta sala"
+                                : isFalla
                                 ? "Describí la falla detectada..."
                                 : "Sin observaciones (opcional)"
                             }
@@ -1881,14 +2188,14 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                                 backgroundColor: "rgba(254, 226, 226, 0.35)",
                               },
                             ]}
-                            editable={!readOnly}
+                            editable={!readOnly && !isNoTiene}
                           />
                         </View>
 
                         {/* Acción / Falla en Seguimiento */}
                         <View style={{ flex: 3.2, paddingHorizontal: 6 }}>
                           <TextInput
-                            value={item.accionSeguimiento}
+                            value={isNoTiene ? "" : item.accionSeguimiento}
                             onFocus={() => setHighlightedSpeaker(item.id)}
                             onChangeText={(val) =>
                               handleUpdateSpeaker(
@@ -1899,7 +2206,9 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                               )
                             }
                             placeholder={
-                              isFalla
+                              isNoTiene
+                                ? "No se incluye en el reporte"
+                                : isFalla
                                 ? "Acción tomada / falla en seguimiento..."
                                 : "Acción o seguimiento (opcional)"
                             }
@@ -1911,7 +2220,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                                 backgroundColor: "rgba(254, 226, 226, 0.35)",
                               },
                             ]}
-                            editable={!readOnly}
+                            editable={!readOnly && !isNoTiene}
                           />
                         </View>
                       </View>
@@ -1979,7 +2288,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
           <View style={s.modalCard}>
             <Text style={s.modalTitle}>Restaurar Sala {selectedSala} a Óptimo</Text>
             <Text style={s.modalText}>
-              ¿Estás seguro de que querés marcar los 21 parlantes de la{" "}
+              ¿Estás seguro de que querés marcar los {stats.activosPorSala[selectedSala] ?? 21} parlantes activos de la{" "}
               <Text style={{ fontWeight: "800" }}>Sala {selectedSala}</Text> como{" "}
               <Text style={{ fontWeight: "800", color: COLORS.success }}>Óptimo</Text> y limpiar
               sus observaciones?
