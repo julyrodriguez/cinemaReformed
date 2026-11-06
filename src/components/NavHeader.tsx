@@ -24,6 +24,20 @@ export type NewsItem = {
 
 const DEFAULT_NEWS: NewsItem[] = [
   {
+    id: "control-mensual-parlantes",
+    tag: "SONIDO 5.1",
+    badgeColor: "#34D399",
+    badgeBg: "rgba(52, 211, 153, 0.14)",
+    icon: "speaker",
+    title: "Proyección: Nueva Sección de Control Mensual de Parlantes (5.1)",
+    message:
+      "Proyección: Nueva planilla y plano acústico interactivo 5.1 por sala para el control mensual de parlantes y reportes HTML/PDF.",
+    detail:
+      "Se incorporó en Proyección la sección 'Control Mensual Parlantes' con plano interactivo 5.1 (SW1-SW4, L/C/R, LS1-LS7 y RS1-RS7), seguimiento de fallas mes a mes al estilo Cierre de Mes y generación de reporte corporativo en HTML y PDF.",
+    ticker: "AUDIO:5.1 ▲",
+    date: "Nuevo",
+  },
+  {
     id: "interfaz-renovada",
     tag: "NUEVA UI",
     badgeColor: "#FB7185",
