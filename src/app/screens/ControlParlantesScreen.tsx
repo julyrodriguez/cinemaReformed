@@ -1404,79 +1404,67 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
             </TouchableOpacity>
           </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.salasPillsScroll}
-          >
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2 mt-1">
             {Array.from({ length: salasCount }, (_, idx) => {
               const salaKey = String(idx + 1);
               const isSelected = selectedSala === salaKey;
               const fallas = stats.fallasPorSala[salaKey] || 0;
+              const optimos = 21 - fallas;
+              const okPct = ((optimos / 21) * 100).toFixed(0);
 
               return (
-                <TouchableOpacity
+                <button
                   key={salaKey}
-                  onPress={() => setSelectedSala(salaKey)}
-                  // @ts-ignore
-                  className="cp-status-pill"
-                  style={[
-                    s.salaPill,
-                    isSelected && s.salaPillActive,
-                    !isSelected && fallas > 0 && s.salaPillWithFault,
-                  ]}
+                  type="button"
+                  onClick={() => setSelectedSala(salaKey)}
+                  className={`cp-status-pill p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                    isSelected
+                      ? "bg-rose-50 dark:bg-rose-500/15 border-rose-500 dark:border-rose-500 text-rose-700 dark:text-rose-300 ring-2 ring-rose-500/20 shadow-xs"
+                      : fallas > 0
+                      ? "bg-rose-50/50 dark:bg-rose-950/25 border-rose-300 dark:border-rose-800/70 text-slate-800 dark:text-zinc-200 hover:border-rose-400"
+                      : "bg-slate-50 dark:bg-zinc-950/60 border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-400 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-100 dark:hover:bg-zinc-900"
+                  }`}
                 >
-                  <MaterialCommunityIcons
-                    name={fallas > 0 ? "speaker-off" : "speaker"}
-                    size={15}
-                    color={
-                      isSelected
-                        ? "#FFFFFF"
-                        : fallas > 0
-                        ? COLORS.danger
-                        : COLORS.success
-                    }
-                  />
-                  <Text
-                    style={[
-                      s.salaPillText,
-                      isSelected && s.salaPillTextActive,
-                      !isSelected && fallas > 0 && { color: COLORS.danger },
-                    ]}
-                  >
-                    Sala {salaKey}
-                  </Text>
-                  <View
-                    style={[
-                      s.salaPillBadge,
-                      {
-                        backgroundColor: isSelected
-                          ? "rgba(255,255,255,0.22)"
-                          : fallas > 0
-                          ? COLORS.danger
-                          : COLORS.successBg,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        s.salaPillBadgeText,
-                        {
-                          color: isSelected
-                            ? "#FFFFFF"
-                            : fallas > 0
-                            ? "#FFFFFF"
-                            : COLORS.success,
-                        },
-                      ]}
+                  <div className="flex items-center justify-between gap-1">
+                    <span
+                      className={`text-xs font-black tracking-tight ${
+                        isSelected
+                          ? "text-rose-600 dark:text-rose-400"
+                          : "text-slate-800 dark:text-zinc-200"
+                      }`}
                     >
-                      {fallas > 0 ? `${fallas} falla${fallas > 1 ? "s" : ""}` : "OK"}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
+                      Sala {salaKey}
+                    </span>
+                    {fallas > 0 ? (
+                      <span className="inline-flex items-center justify-center px-1.5 py-0.2 rounded-full text-[9px] font-black bg-rose-600 text-white shrink-0">
+                        {fallas}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center justify-center px-1.5 py-0.2 rounded-full text-[9px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">
+                        OK
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] font-semibold mt-1">
+                    <span
+                      className={
+                        fallas > 0
+                          ? "text-rose-600 dark:text-rose-400 font-bold"
+                          : isSelected
+                          ? "text-rose-600/80 dark:text-rose-400/80"
+                          : "text-emerald-600 dark:text-emerald-500"
+                      }
+                    >
+                      {okPct}%
+                    </span>
+                    <span className="text-slate-400 dark:text-zinc-500 text-[9px]">
+                      ({optimos}/21)
+                    </span>
+                  </div>
+                </button>
               );
             })}
-          </ScrollView>
+          </div>
         </View>
 
         {/* 3. VISTA RESUMEN GENERAL DE FALLAS EN SEGUIMIENTO */}
