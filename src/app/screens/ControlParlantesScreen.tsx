@@ -1305,7 +1305,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
             </View>
           </View>
 
-          {/* Barra de Salud Acústica del Complejo */}
+          {/* Resumen de Estado General del Complejo */}
           <View style={s.healthSummaryBar}>
             <View style={s.healthMetricsRow}>
               <View style={s.healthBadgeGroup}>
@@ -1317,40 +1317,21 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                 <Text style={s.healthSummaryTitle}>
                   Estado General ({formatMesAno(selectedMesAno)}):{" "}
                   <Text style={{ color: stats.totalFallas === 0 ? COLORS.success : COLORS.danger }}>
-                    {stats.totalOptimos}/{stats.totalSpeakers} Parlantes Óptimos ({stats.healthPct}%)
+                    {stats.totalOptimos}/{stats.totalSpeakers} Parlantes Óptimos
                   </Text>
                 </Text>
               </View>
 
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                <View style={s.miniStatChipOk}>
-                  <Text style={s.miniStatChipOkText}>
-                    Salas 100% Óptimas: {stats.salasOptimas}/{salasCount}
+              {stats.totalFallas > 0 && (
+                <TouchableOpacity
+                  onPress={() => setSelectedSala("RESUMEN")}
+                  style={s.miniStatChipDanger}
+                >
+                  <Text style={s.miniStatChipDangerText}>
+                    {stats.totalFallas} Falla{stats.totalFallas === 1 ? "" : "s"} en seguimiento (Ver resumen)
                   </Text>
-                </View>
-                {stats.totalFallas > 0 && (
-                  <TouchableOpacity
-                    onPress={() => setSelectedSala("RESUMEN")}
-                    style={s.miniStatChipDanger}
-                  >
-                    <Text style={s.miniStatChipDangerText}>
-                      {stats.totalFallas} Falla{stats.totalFallas === 1 ? "" : "s"} en seguimiento (Ver resumen)
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-
-            <View style={s.progressTrack}>
-              <View
-                style={[
-                  s.progressFill,
-                  {
-                    width: `${stats.healthPct}%` as any,
-                    backgroundColor: stats.totalFallas === 0 ? COLORS.success : COLORS.primary,
-                  },
-                ]}
-              />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
