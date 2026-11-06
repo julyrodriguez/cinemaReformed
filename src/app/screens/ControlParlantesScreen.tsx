@@ -988,39 +988,70 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
     return (
       <View style={s.diagramCard}>
         <View style={s.diagramCardHeader}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <MaterialCommunityIcons name="surround-sound-5-1" size={22} color={COLORS.primary} />
-            <View>
-              <Text style={s.diagramCardTitle}>Plano Acústico Sala {selectedSala} (5.1)</Text>
-              <Text style={s.diagramCardSub}>
-                {mapClickTogglesState
-                  ? "Tocá un parlante para alternar Óptimo / Con falla"
-                  : "Tocá un parlante para resaltarlo en la planilla"}
+          <View style={s.diagramTitleRow}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+              <View style={s.diagramIconBadge}>
+                <MaterialCommunityIcons name="surround-sound-5-1" size={18} color={COLORS.primary} />
+              </View>
+              <Text style={s.diagramCardTitle} numberOfLines={1}>
+                Plano Sala {selectedSala}
               </Text>
+            </View>
+
+            <View style={s.modeSegmentedTrack}>
+              <TouchableOpacity
+                onPress={() => setMapClickTogglesState(true)}
+                activeOpacity={0.85}
+                style={[
+                  s.modeSegmentedOption,
+                  mapClickTogglesState && s.modeSegmentedOptionActive,
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name="gesture-tap-button"
+                  size={13}
+                  color={mapClickTogglesState ? "#FFFFFF" : COLORS.muted}
+                />
+                <Text
+                  style={[
+                    s.modeSegmentedText,
+                    mapClickTogglesState && s.modeSegmentedTextActive,
+                  ]}
+                >
+                  Alternar
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setMapClickTogglesState(false)}
+                activeOpacity={0.85}
+                style={[
+                  s.modeSegmentedOption,
+                  !mapClickTogglesState && s.modeSegmentedOptionActiveNeutral,
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name="eye-outline"
+                  size={13}
+                  color={!mapClickTogglesState ? COLORS.text : COLORS.muted}
+                />
+                <Text
+                  style={[
+                    s.modeSegmentedText,
+                    !mapClickTogglesState && s.modeSegmentedTextActiveNeutral,
+                  ]}
+                >
+                  Ver fila
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
 
-          <TouchableOpacity
-            onPress={() => setMapClickTogglesState((v) => !v)}
-            style={[
-              s.modeSwitchBtn,
-              mapClickTogglesState && { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name={mapClickTogglesState ? "gesture-tap-button" : "eye-outline"}
-              size={14}
-              color={mapClickTogglesState ? COLORS.primary : COLORS.muted}
-            />
-            <Text
-              style={[
-                s.modeSwitchText,
-                mapClickTogglesState && { color: COLORS.primary, fontWeight: "800" },
-              ]}
-            >
-              {mapClickTogglesState ? "Clic cambia estado" : "Solo selección"}
-            </Text>
-          </TouchableOpacity>
+          <Text style={s.diagramCardSub}>
+            {mapClickTogglesState
+              ? "Tocá un parlante para cambiar su estado (Óptimo / Con falla)"
+              : "Tocá un parlante para resaltarlo en la planilla"}
+          </Text>
         </View>
 
         {/* Contenedor del Plano estilo esquema técnico 5.1 */}
@@ -2245,11 +2276,24 @@ const s = StyleSheet.create({
     ...THEME.shadow.soft,
   },
   diagramCardHeader: {
+    gap: 6,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  diagramTitleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     gap: 8,
-    flexWrap: "wrap",
+  },
+  diagramIconBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
   },
   diagramCardTitle: {
     fontSize: 14,
@@ -2259,22 +2303,45 @@ const s = StyleSheet.create({
   diagramCardSub: {
     fontSize: 11,
     color: COLORS.muted,
+    fontWeight: "600",
   },
-  modeSwitchBtn: {
+  modeSegmentedTrack: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 8,
+    backgroundColor: COLORS.bgMobile,
+    borderRadius: 10,
+    padding: 3,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: COLORS.bgMobile,
+    gap: 2,
   },
-  modeSwitchText: {
+  modeSegmentedOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 7,
+  },
+  modeSegmentedOptionActive: {
+    backgroundColor: COLORS.primary,
+  },
+  modeSegmentedOptionActiveNeutral: {
+    backgroundColor: COLORS.card,
+    ...THEME.shadow.web,
+  },
+  modeSegmentedText: {
     fontSize: 11,
     color: COLORS.muted,
-    fontWeight: "600",
+    fontWeight: "700",
+  },
+  modeSegmentedTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+  modeSegmentedTextActiveNeutral: {
+    color: COLORS.text,
+    fontWeight: "800",
   },
   acousticCanvas: {
     backgroundColor: "#CBD5E1",
