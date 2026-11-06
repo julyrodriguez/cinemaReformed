@@ -55,6 +55,7 @@ import ControlSemanalScreen from "./screens/ControlSemanalScreen";
 import ChequeoCopiasScreen from "./screens/ChequeoCopiasScreen";
 import LamparasScreen from "./screens/LamparasScreen";
 import CierreMesScreen from "./screens/CierreMesScreen";
+import ControlParlantesScreen from "./screens/ControlParlantesScreen";
 import MantenimientosScreen from "./screens/MantenimientosScreen";
 import ProgramacionProyeccionScreen from "./screens/ProgramacionProyeccionScreen";
 import ControlSalasScreen from "./screens/ControlSalasScreen";
@@ -82,7 +83,8 @@ type ProyeccionTab =
   | "CHEQUEO_COPIAS"
   | "CONTROL_SEMANAL"
   | "LAMPARAS"
-  | "CIERRE_MES";
+  | "CIERRE_MES"
+  | "CONTROL_PARLANTES";
 
 type MarketingSubTab =
   | "MKT"
@@ -120,6 +122,7 @@ const SUB_TABS = {
     { key: "CHEQUEO_COPIAS", label: "Chequeo de Copias", icon: "movie-check-outline" },
     { key: "CONTROL_SEMANAL", label: "Control Semanal", icon: "clipboard-check-outline" },
     { key: "CIERRE_MES", label: "Cierre de Mes", icon: "calendar-check" },
+    { key: "CONTROL_PARLANTES", label: "Control Mensual Parlantes", icon: "speaker" },
   ],
   SERVICIOS: [
     { key: "PROGRAMACION", label: "Programaciones", icon: "clipboard-text-outline" },
@@ -933,6 +936,9 @@ export default function Home() {
             )}
             {proyeccionTab === "CIERRE_MES" && (
               <CierreMesScreen readOnly={!isProjectionUnlocked} />
+            )}
+            {proyeccionTab === "CONTROL_PARLANTES" && (
+              <ControlParlantesScreen readOnly={!isProjectionUnlocked} />
             )}
           </View>
         </View>
