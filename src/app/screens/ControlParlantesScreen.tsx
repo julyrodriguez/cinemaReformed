@@ -1320,20 +1320,18 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
       noTiene: false,
     };
     const isMissing = !!item.noTiene;
-    const isFalla = !isMissing && item.estado === "Con falla";
+    if (isMissing) return null;
+
+    const isFalla = item.estado === "Con falla";
     const isSelected = highlightedSpeaker === id;
 
     let baseBg = "#E59824";
     if (variant === "sw") baseBg = "#8B8046";
     if (variant === "screen") baseBg = "#2B7BBA";
 
-    const bgColor = isMissing ? "#64748B" : isFalla ? "#DC2626" : baseBg;
+    const bgColor = isFalla ? "#DC2626" : baseBg;
     const borderColor = isSelected
       ? "#0F172A"
-      : isMissing
-      ? isEditingRoomConfig
-        ? "#10B981"
-        : "#475569"
       : isFalla
       ? "#991B1B"
       : "#1E3A5F";
@@ -1343,7 +1341,6 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
         handleToggleSpeakerExistsInSala(selectedSala, id);
         return;
       }
-      if (isMissing) return;
       setHighlightedSpeaker(id);
       if (mapClickTogglesState && !readOnly && selectedSala !== "RESUMEN") {
         handleToggleSpeakerStatus(selectedSala, id);
@@ -1354,7 +1351,6 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
       <TouchableOpacity
         key={id}
         onPress={handlePressNode}
-        disabled={!isEditingRoomConfig && isMissing}
         activeOpacity={0.8}
         // @ts-ignore web className for smooth animation
         className={`cp-speaker-node ${isFalla ? "cp-speaker-fault" : ""}`}
@@ -1367,56 +1363,35 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
           {
             backgroundColor: bgColor,
             borderColor,
-            borderWidth: isSelected ? 2.5 : isEditingRoomConfig && isMissing ? 2 : 1.5,
-            borderStyle: isMissing ? "dashed" : "solid",
-            opacity: isMissing ? (isEditingRoomConfig ? 0.78 : 0.2) : 1,
+            borderWidth: isSelected ? 2.5 : 1.5,
           },
         ]}
       >
-        <Text
+        <Text style={s.diagramNodeText}>{id}</Text>
+        <View
           style={[
-            s.diagramNodeText,
-            isMissing && !isEditingRoomConfig && { textDecorationLine: "line-through", color: "#F1F5F9" },
+            s.diagramStatusDot,
+            {
+              backgroundColor: isEditingRoomConfig
+                ? "#EF4444"
+                : isFalla
+                ? "#FEF2F2"
+                : "#10B981",
+            },
           ]}
         >
-          {id}
-        </Text>
-        {(!isMissing || isEditingRoomConfig) && (
-          <View
-            style={[
-              s.diagramStatusDot,
-              {
-                backgroundColor: isEditingRoomConfig
-                  ? isMissing
-                    ? "#10B981"
-                    : "#EF4444"
-                  : isFalla
-                  ? "#FEF2F2"
-                  : "#10B981",
-              },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name={
-                isEditingRoomConfig
-                  ? isMissing
-                    ? "plus"
-                    : "minus"
-                  : isFalla
-                  ? "alert"
-                  : "check"
-              }
-              size={10}
-              color={
-                isEditingRoomConfig
-                  ? "#FFFFFF"
-                  : isFalla
-                  ? "#DC2626"
-                  : "#FFFFFF"
-              }
-            />
-          </View>
-        )}
+          <MaterialCommunityIcons
+            name={isEditingRoomConfig ? "minus" : isFalla ? "alert" : "check"}
+            size={10}
+            color={
+              isEditingRoomConfig
+                ? "#FFFFFF"
+                : isFalla
+                ? "#DC2626"
+                : "#FFFFFF"
+            }
+          />
+        </View>
       </TouchableOpacity>
     );
   };
@@ -1464,26 +1439,28 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
     const roomFallas = stats.fallasPorSala[selectedSala] || 0;
     const roomActivos = stats.activosPorSala[selectedSala] ?? 21;
 
-    const swIds = currentRoomCatalog
+    const activeCatalog = currentRoomCatalog.filter((m) => !speakerMapById[m.id]?.noTiene);
+
+    const swIds = activeCatalog
       .filter((m) => m.zone === "Subwoofer")
       .map((m) => m.id);
-    const screenIds = currentRoomCatalog
+    const screenIds = activeCatalog
       .filter((m) => m.zone === "Pantalla (L/C/R)")
       .map((m) => m.id);
-    const lsIds = currentRoomCatalog
+    const lsIds = activeCatalog
       .filter((m) => m.zone === "Left Surround (LS)")
       .map((m) => m.id);
-    const rsIds = currentRoomCatalog
+    const rsIds = activeCatalog
       .filter((m) => m.zone === "Right Surround (RS)")
       .map((m) => m.id);
 
-    const lsRearCount = lsIds.length >= 4 ? 2 : 0;
-    const lsSideIds = lsIds.slice(0, lsIds.length - lsRearCount);
-    const lsRearIds = lsIds.slice(lsIds.length - lsRearCount);
+    const lsSideSet = new Set(["LS1", "LS2", "LS3", "LS4", "LS5"]);
+    const lsSideIds = lsIds.filter((id) => lsSideSet.has(id));
+    const lsRearIds = lsIds.filter((id) => !lsSideSet.has(id));
 
-    const rsRearCount = rsIds.length >= 4 ? 2 : 0;
-    const rsSideIds = rsIds.slice(0, rsIds.length - rsRearCount);
-    const rsRearIds = rsIds.slice(rsIds.length - rsRearCount).slice().reverse();
+    const rsSideSet = new Set(["RS1", "RS2", "RS3", "RS4", "RS5"]);
+    const rsSideIds = rsIds.filter((id) => rsSideSet.has(id));
+    const rsRearIds = rsIds.filter((id) => !rsSideSet.has(id)).slice().reverse();
 
     return (
       <View style={s.diagramCard}>
