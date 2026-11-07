@@ -24,28 +24,7 @@ import { getCineConfig } from "../../lib/cineConfig";
 
 // ─── Definición de Parlantes 5.1 (según esquema oficial) ─────────────────────
 
-export type SpeakerId =
-  | "SW1"
-  | "SW2"
-  | "SW3"
-  | "SW4"
-  | "L"
-  | "C"
-  | "R"
-  | "LS1"
-  | "LS2"
-  | "LS3"
-  | "LS4"
-  | "LS5"
-  | "LS6"
-  | "LS7"
-  | "RS1"
-  | "RS2"
-  | "RS3"
-  | "RS4"
-  | "RS5"
-  | "RS6"
-  | "RS7";
+export type SpeakerId = string;
 
 export type SpeakerStatus = "Óptimo" | "Con falla";
 
@@ -86,6 +65,75 @@ export const SPEAKERS_5_1: SpeakerMeta[] = [
   { id: "RS7", label: "Right Surround 7 (Trasero)", zone: "Right Surround (RS)", color: "#E59824" },
 ];
 
+const BASE_SPEAKER_IDS = new Set(SPEAKERS_5_1.map((s) => s.id));
+
+export function inferSpeakerMeta(id: string, extraList: SpeakerMeta[] = []): SpeakerMeta {
+  const fromBase = SPEAKERS_5_1.find((s) => s.id === id);
+  if (fromBase) return fromBase;
+  const fromExtra = extraList.find((s) => s.id === id);
+  if (fromExtra) return fromExtra;
+
+  const upper = id.toUpperCase();
+  if (upper.startsWith("SW")) {
+    const num = upper.replace("SW", "") || "";
+    return {
+      id: upper,
+      label: `Subwoofer ${num}`.trim(),
+      zone: "Subwoofer",
+      color: "#8B8046",
+    };
+  }
+  if (upper.startsWith("LS")) {
+    const num = upper.replace("LS", "") || "";
+    return {
+      id: upper,
+      label: `Left Surround ${num}`.trim(),
+      zone: "Left Surround (LS)",
+      color: "#E59824",
+    };
+  }
+  if (upper.startsWith("RS")) {
+    const num = upper.replace("RS", "") || "";
+    return {
+      id: upper,
+      label: `Right Surround ${num}`.trim(),
+      zone: "Right Surround (RS)",
+      color: "#E59824",
+    };
+  }
+  return {
+    id: upper,
+    label: `Canal Pantalla (${upper})`,
+    zone: "Pantalla (L/C/R)",
+    color: "#2B7BBA",
+  };
+}
+
+export function getRoomSpeakerCatalog(extraList: SpeakerMeta[] = []): SpeakerMeta[] {
+  const catalog: SpeakerMeta[] = [...SPEAKERS_5_1];
+  const seen = new Set(catalog.map((s) => s.id));
+  extraList.forEach((extra) => {
+    if (extra && extra.id && !seen.has(extra.id)) {
+      seen.add(extra.id);
+      catalog.push(inferSpeakerMeta(extra.id, extraList));
+    }
+  });
+
+  const zoneOrder: Record<SpeakerZone, number> = {
+    Subwoofer: 1,
+    "Pantalla (L/C/R)": 2,
+    "Left Surround (LS)": 3,
+    "Right Surround (RS)": 4,
+  };
+
+  return catalog.sort((a, b) => {
+    if (zoneOrder[a.zone] !== zoneOrder[b.zone]) {
+      return zoneOrder[a.zone] - zoneOrder[b.zone];
+    }
+    return a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: "base" });
+  });
+}
+
 export interface SpeakerCheckItem {
   id: SpeakerId;
   estado: SpeakerStatus;
@@ -103,9 +151,13 @@ export interface SavedMonthlySpeakers {
   updatedAt?: string;
 }
 
-function buildDefaultRoomSpeakers(disabledIds: SpeakerId[] = []): SpeakerCheckItem[] {
+function buildDefaultRoomSpeakers(
+  disabledIds: SpeakerId[] = [],
+  extraList: SpeakerMeta[] = []
+): SpeakerCheckItem[] {
   const disabledSet = new Set(disabledIds);
-  return SPEAKERS_5_1.map((sp) => ({
+  const catalog = getRoomSpeakerCatalog(extraList);
+  return catalog.map((sp) => ({
     id: sp.id,
     estado: "Óptimo",
     observacion: "",
@@ -116,10 +168,13 @@ function buildDefaultRoomSpeakers(disabledIds: SpeakerId[] = []): SpeakerCheckIt
 
 function normalizeRoomSpeakers(
   rawList?: SpeakerCheckItem[],
-  disabledIds: SpeakerId[] = []
+  disabledIds: SpeakerId[] = [],
+  extraList: SpeakerMeta[] = []
 ): SpeakerCheckItem[] {
   const disabledSet = new Set(disabledIds);
   const map = new Map<string, SpeakerCheckItem>();
+  const combinedExtras: SpeakerMeta[] = [...extraList];
+
   if (Array.isArray(rawList)) {
     rawList.forEach((item) => {
       if (item && item.id) {
@@ -130,10 +185,15 @@ function normalizeRoomSpeakers(
           accionSeguimiento: item.accionSeguimiento || "",
           noTiene: item.noTiene !== undefined ? !!item.noTiene : disabledSet.has(item.id as SpeakerId),
         });
+        if (!BASE_SPEAKER_IDS.has(item.id) && !combinedExtras.some((e) => e.id === item.id)) {
+          combinedExtras.push(inferSpeakerMeta(item.id, extraList));
+        }
       }
     });
   }
-  return SPEAKERS_5_1.map((sp) => {
+
+  const catalog = getRoomSpeakerCatalog(combinedExtras);
+  return catalog.map((sp) => {
     const existing = map.get(sp.id);
     if (existing) {
       return {
@@ -198,8 +258,11 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
   // Estado principal de parlantes por sala
   const [salasData, setSalasData] = useState<Record<string, SpeakerCheckItem[]>>({});
   const [disabledBySala, setDisabledBySala] = useState<Record<string, SpeakerId[]>>({});
+  const [extraBySala, setExtraBySala] = useState<Record<string, SpeakerMeta[]>>({});
   const [isEditingRoomConfig, setIsEditingRoomConfig] = useState<boolean>(false);
   const [savingRoomConfig, setSavingRoomConfig] = useState<boolean>(false);
+  const [customSpeakerIdInput, setCustomSpeakerIdInput] = useState<string>("");
+  const [customSpeakerZoneInput, setCustomSpeakerZoneInput] = useState<SpeakerZone>("Left Surround (LS)");
 
   // Filtros e interacción en la planilla
   const [filterMode, setFilterMode] = useState<"ALL" | "FALLA">("ALL");
@@ -304,13 +367,20 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
     if (!cineId) return;
     setLoading(true);
     try {
-      // Cargar configuración persistente de parlantes inexistentes por sala del cine
+      // Cargar configuración persistente de parlantes inexistentes y agregados por sala del cine
       let loadedDisabledMap: Record<string, SpeakerId[]> = {};
+      let loadedExtraMap: Record<string, SpeakerMeta[]> = {};
       try {
         const cfgRef = doc(db, CINES_COLLECTION, cineId, "config", "parlantes_salas");
         const cfgSnap = await getDoc(cfgRef);
-        if (cfgSnap.exists() && cfgSnap.data()?.disabledBySala) {
-          loadedDisabledMap = cfgSnap.data().disabledBySala || {};
+        if (cfgSnap.exists()) {
+          const cfgData = cfgSnap.data();
+          if (cfgData?.disabledBySala) {
+            loadedDisabledMap = cfgData.disabledBySala || {};
+          }
+          if (cfgData?.extraBySala) {
+            loadedExtraMap = cfgData.extraBySala || {};
+          }
         }
       } catch (cfgErr) {
         console.warn("No se pudo leer config/parlantes_salas:", cfgErr);
@@ -329,15 +399,32 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
         for (let i = 1; i <= salasCount; i++) {
           const key = String(i);
           const roomDisabled = loadedDisabledMap[key] || [];
-          const normalized = normalizeRoomSpeakers(data.salas?.[key], roomDisabled);
+          const roomExtras = loadedExtraMap[key] || [];
+          const normalized = normalizeRoomSpeakers(data.salas?.[key], roomDisabled, roomExtras);
           loadedSalas[key] = normalized;
           // Sincronizar disabledMap con lo guardado en el mes si existían parlantes marcados noTiene
           const fromDocDisabled = normalized.filter((s) => s.noTiene).map((s) => s.id);
           if (fromDocDisabled.length > 0 && (!loadedDisabledMap[key] || loadedDisabledMap[key].length === 0)) {
             loadedDisabledMap[key] = fromDocDisabled;
           }
+          // Sincronizar extraMap si en el doc había parlantes extra
+          const fromDocExtras = normalized
+            .filter((s) => !BASE_SPEAKER_IDS.has(s.id))
+            .map((s) => inferSpeakerMeta(s.id, roomExtras));
+          if (fromDocExtras.length > 0) {
+            const existingExtraIds = new Set(roomExtras.map((e) => e.id));
+            const mergedExtras = [...roomExtras];
+            fromDocExtras.forEach((ex) => {
+              if (!existingExtraIds.has(ex.id)) {
+                existingExtraIds.add(ex.id);
+                mergedExtras.push(ex);
+              }
+            });
+            loadedExtraMap[key] = mergedExtras;
+          }
         }
         setDisabledBySala(loadedDisabledMap);
+        setExtraBySala(loadedExtraMap);
         setSalasData(loadedSalas);
         setIsSavedInDb(true);
         setCarriedFromPrevMonth(false);
@@ -364,7 +451,8 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
           for (let i = 1; i <= salasCount; i++) {
             const key = String(i);
             const roomDisabled = loadedDisabledMap[key] || [];
-            const normalized = normalizeRoomSpeakers(prevData.salas?.[key], roomDisabled);
+            const roomExtras = loadedExtraMap[key] || [];
+            const normalized = normalizeRoomSpeakers(prevData.salas?.[key], roomDisabled, roomExtras);
             if (
               normalized.some(
                 (s) => !s.noTiene && (s.estado === "Con falla" || s.accionSeguimiento.trim() !== "")
@@ -377,11 +465,15 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
         } else {
           for (let i = 1; i <= salasCount; i++) {
             const key = String(i);
-            initialSalas[key] = buildDefaultRoomSpeakers(loadedDisabledMap[key] || []);
+            initialSalas[key] = buildDefaultRoomSpeakers(
+              loadedDisabledMap[key] || [],
+              loadedExtraMap[key] || []
+            );
           }
         }
 
         setDisabledBySala(loadedDisabledMap);
+        setExtraBySala(loadedExtraMap);
         setSalasData(initialSalas);
         setCarriedFromPrevMonth(foundCarryOver);
       }
@@ -405,7 +497,9 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
 
     for (let i = 1; i <= salasCount; i++) {
       const key = String(i);
-      const list = salasData[key] || buildDefaultRoomSpeakers(disabledBySala[key] || []);
+      const roomExtras = extraBySala[key] || [];
+      const list =
+        salasData[key] || buildDefaultRoomSpeakers(disabledBySala[key] || [], roomExtras);
       let roomFallas = 0;
       let roomActivos = 0;
 
@@ -416,7 +510,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
         if (sp.estado === "Con falla") {
           totalFallas++;
           roomFallas++;
-          const meta = SPEAKERS_5_1.find((m) => m.id === sp.id) || SPEAKERS_5_1[0];
+          const meta = inferSpeakerMeta(sp.id, roomExtras);
           allFallasList.push({ sala: key, item: sp, meta });
         } else {
           totalOptimos++;
@@ -441,17 +535,73 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
       allFallasList,
       healthPct,
     };
-  }, [salasData, salasCount, disabledBySala]);
+  }, [salasData, salasCount, disabledBySala, extraBySala]);
 
-  // ─── Configurar qué parlantes tiene o no tiene una Sala ────────────────────
+  // ─── Configurar qué parlantes tiene, quita o agrega una Sala ────────────────
+
+  const persistRoomConfig = async (
+    nextDisabledMap: Record<string, SpeakerId[]>,
+    nextExtraMap: Record<string, SpeakerMeta[]>
+  ) => {
+    if (!cineId) return;
+    try {
+      setSavingRoomConfig(true);
+      const cfgRef = doc(db, CINES_COLLECTION, cineId, "config", "parlantes_salas");
+      await setDoc(
+        cfgRef,
+        {
+          disabledBySala: nextDisabledMap,
+          extraBySala: nextExtraMap,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error("Error al guardar configuración de parlantes de sala:", err);
+    } finally {
+      setSavingRoomConfig(false);
+    }
+  };
 
   const handleToggleSpeakerExistsInSala = async (salaKey: string, speakerId: SpeakerId) => {
     if (readOnly || salaKey === "RESUMEN") return;
 
+    const roomExtras = extraBySala[salaKey] || [];
     const currentRoomList =
-      salasData[salaKey] || buildDefaultRoomSpeakers(disabledBySala[salaKey] || []);
+      salasData[salaKey] || buildDefaultRoomSpeakers(disabledBySala[salaKey] || [], roomExtras);
+
+    // Si es un parlante extra (agregado por el usuario más allá de los 21 base) y está activo, quitarlo lo elimina de los extras de la sala
+    const isBaseSpeaker = BASE_SPEAKER_IDS.has(speakerId);
     const targetItem = currentRoomList.find((x) => x.id === speakerId);
-    const nextNoTiene = !(targetItem?.noTiene ?? false);
+    const currentlyDisabled = Boolean(targetItem?.noTiene);
+
+    if (!isBaseSpeaker && !currentlyDisabled) {
+      const nextExtrasForSala = roomExtras.filter((e) => e.id !== speakerId);
+      const nextExtraMap = {
+        ...extraBySala,
+        [salaKey]: nextExtrasForSala,
+      };
+      const updatedRoomList = currentRoomList.filter((item) => item.id !== speakerId);
+      const nextDisabledForSala = (disabledBySala[salaKey] || []).filter((id) => id !== speakerId);
+      const nextDisabledMap = {
+        ...disabledBySala,
+        [salaKey]: nextDisabledForSala,
+      };
+
+      setExtraBySala(nextExtraMap);
+      setDisabledBySala(nextDisabledMap);
+      setSalasData((prev) => ({
+        ...prev,
+        [salaKey]: updatedRoomList,
+      }));
+      if (highlightedSpeaker === speakerId) {
+        setHighlightedSpeaker(null);
+      }
+      await persistRoomConfig(nextDisabledMap, nextExtraMap);
+      return;
+    }
+
+    const nextNoTiene = !currentlyDisabled;
 
     const updatedRoomList = currentRoomList.map((item) =>
       item.id === speakerId
@@ -479,24 +629,127 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
     }));
     setDisabledBySala(nextDisabledMap);
 
-    if (cineId) {
-      try {
-        setSavingRoomConfig(true);
-        const cfgRef = doc(db, CINES_COLLECTION, cineId, "config", "parlantes_salas");
-        await setDoc(
-          cfgRef,
-          {
-            disabledBySala: nextDisabledMap,
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
-      } catch (err) {
-        console.error("Error al guardar configuración de parlantes de sala:", err);
-      } finally {
-        setSavingRoomConfig(false);
+    await persistRoomConfig(nextDisabledMap, extraBySala);
+  };
+
+  const handleAddSpeakerToSala = async (
+    salaKey: string,
+    zone: SpeakerZone,
+    customIdRaw?: string
+  ) => {
+    if (readOnly || salaKey === "RESUMEN") return;
+
+    const roomExtras = extraBySala[salaKey] || [];
+    const currentRoomList =
+      salasData[salaKey] || buildDefaultRoomSpeakers(disabledBySala[salaKey] || [], roomExtras);
+    const catalog = getRoomSpeakerCatalog(roomExtras);
+
+    // 1. Si no se especificó un ID manual y hay algún parlante base de esa zona marcado como "noTiene", lo reactivamos primero
+    if (!customIdRaw) {
+      const disabledInZone = currentRoomList.find((sp) => {
+        if (!sp.noTiene) return false;
+        const meta = inferSpeakerMeta(sp.id, roomExtras);
+        return meta.zone === zone;
+      });
+
+      if (disabledInZone) {
+        setHighlightedSpeaker(disabledInZone.id);
+        await handleToggleSpeakerExistsInSala(salaKey, disabledInZone.id);
+        return;
       }
     }
+
+    // 2. Generar el nuevo ID según la zona o usar el ID personalizado ingresado
+    let newId = (customIdRaw || "").trim().toUpperCase().replace(/\s+/g, "");
+    if (!newId) {
+      const prefix =
+        zone === "Subwoofer"
+          ? "SW"
+          : zone === "Left Surround (LS)"
+          ? "LS"
+          : zone === "Right Surround (RS)"
+          ? "RS"
+          : "CH";
+
+      let maxNum =
+        prefix === "SW" ? 4 : prefix === "LS" || prefix === "RS" ? 7 : 0;
+
+      catalog.forEach((m) => {
+        if (m.id.toUpperCase().startsWith(prefix)) {
+          const n = parseInt(m.id.toUpperCase().slice(prefix.length), 10);
+          if (Number.isFinite(n) && n > maxNum) {
+            maxNum = n;
+          }
+        }
+      });
+
+      newId = `${prefix}${maxNum + 1}`;
+    }
+
+    // Verificar si ya existe en la sala
+    const existingItem = currentRoomList.find((x) => x.id.toUpperCase() === newId);
+    if (existingItem) {
+      if (existingItem.noTiene) {
+        setHighlightedSpeaker(existingItem.id);
+        await handleToggleSpeakerExistsInSala(salaKey, existingItem.id);
+      } else {
+        setHighlightedSpeaker(existingItem.id);
+      }
+      setCustomSpeakerIdInput("");
+      return;
+    }
+
+    const colorMap: Record<SpeakerZone, string> = {
+      Subwoofer: "#8B8046",
+      "Pantalla (L/C/R)": "#2B7BBA",
+      "Left Surround (LS)": "#E59824",
+      "Right Surround (RS)": "#E59824",
+    };
+
+    const labelPrefixMap: Record<SpeakerZone, string> = {
+      Subwoofer: "Subwoofer",
+      "Pantalla (L/C/R)": "Canal Pantalla",
+      "Left Surround (LS)": "Left Surround",
+      "Right Surround (RS)": "Right Surround",
+    };
+
+    const newMeta: SpeakerMeta = {
+      id: newId,
+      label: `${labelPrefixMap[zone]} (${newId})`,
+      zone,
+      color: colorMap[zone],
+    };
+
+    const nextExtrasForSala = [...roomExtras, newMeta];
+    const nextExtraMap = {
+      ...extraBySala,
+      [salaKey]: nextExtrasForSala,
+    };
+
+    const updatedRoomList = normalizeRoomSpeakers(
+      [
+        ...currentRoomList,
+        {
+          id: newId,
+          estado: "Óptimo",
+          observacion: "",
+          accionSeguimiento: "",
+          noTiene: false,
+        },
+      ],
+      disabledBySala[salaKey] || [],
+      nextExtrasForSala
+    );
+
+    setExtraBySala(nextExtraMap);
+    setSalasData((prev) => ({
+      ...prev,
+      [salaKey]: updatedRoomList,
+    }));
+    setHighlightedSpeaker(newId);
+    setCustomSpeakerIdInput("");
+
+    await persistRoomConfig(disabledBySala, nextExtraMap);
   };
 
   // ─── Actualización de Estado de Parlantes ──────────────────────────────────
@@ -509,7 +762,9 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
   ) => {
     if (readOnly) return;
     setSalasData((prev) => {
-      const roomList = prev[salaKey] ? [...prev[salaKey]] : buildDefaultRoomSpeakers();
+      const roomList = prev[salaKey]
+        ? [...prev[salaKey]]
+        : buildDefaultRoomSpeakers(disabledBySala[salaKey] || [], extraBySala[salaKey] || []);
       const idx = roomList.findIndex((item) => item.id === speakerId);
       if (idx !== -1) {
         roomList[idx] = {
@@ -527,7 +782,9 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
   const handleToggleSpeakerStatus = (salaKey: string, speakerId: SpeakerId) => {
     if (readOnly) return;
     setSalasData((prev) => {
-      const roomList = prev[salaKey] ? [...prev[salaKey]] : buildDefaultRoomSpeakers();
+      const roomList = prev[salaKey]
+        ? [...prev[salaKey]]
+        : buildDefaultRoomSpeakers(disabledBySala[salaKey] || [], extraBySala[salaKey] || []);
       const idx = roomList.findIndex((item) => item.id === speakerId);
       if (idx !== -1) {
         const nextStatus: SpeakerStatus =
@@ -548,7 +805,10 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
     if (readOnly || selectedSala === "RESUMEN") return;
     setSalasData((prev) => ({
       ...prev,
-      [selectedSala]: buildDefaultRoomSpeakers(disabledBySala[selectedSala] || []),
+      [selectedSala]: buildDefaultRoomSpeakers(
+        disabledBySala[selectedSala] || [],
+        extraBySala[selectedSala] || []
+      ),
     }));
     setShowResetRoomModal(false);
   };
@@ -568,7 +828,11 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
       const cleanSalas: Record<string, SpeakerCheckItem[]> = {};
       for (let i = 1; i <= salasCount; i++) {
         const key = String(i);
-        const list = normalizeRoomSpeakers(salasData[key], disabledBySala[key] || []);
+        const list = normalizeRoomSpeakers(
+          salasData[key],
+          disabledBySala[key] || [],
+          extraBySala[key] || []
+        );
         cleanSalas[key] = list.map((sp) => ({
           id: sp.id,
           estado: sp.noTiene ? "Óptimo" : sp.estado,
@@ -644,13 +908,18 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
     let salasDetailHtml = "";
     for (let i = 1; i <= salasCount; i++) {
       const key = String(i);
-      const fullList = normalizeRoomSpeakers(salasData[key], disabledBySala[key] || []);
+      const roomExtras = extraBySala[key] || [];
+      const fullList = normalizeRoomSpeakers(
+        salasData[key],
+        disabledBySala[key] || [],
+        roomExtras
+      );
       const activeList = fullList.filter((x) => !x.noTiene);
       const fallasCount = activeList.filter((x) => x.estado === "Con falla").length;
 
       const rowsHtml = activeList
         .map((sp) => {
-          const meta = SPEAKERS_5_1.find((m) => m.id === sp.id);
+          const meta = inferSpeakerMeta(sp.id, roomExtras);
           const isFalla = sp.estado === "Con falla";
           return `
             <tr style="${isFalla ? "background-color: #FEF2F2;" : ""}">
@@ -1000,10 +1269,23 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
 
   // ─── Render de Nodo de Parlante en el Diagrama 5.1 ─────────────────────────
 
+  const currentRoomExtras = useMemo(() => {
+    if (selectedSala === "RESUMEN") return [];
+    return extraBySala[selectedSala] || [];
+  }, [extraBySala, selectedSala]);
+
+  const currentRoomCatalog = useMemo(() => {
+    return getRoomSpeakerCatalog(currentRoomExtras);
+  }, [currentRoomExtras]);
+
   const currentRoomSpeakers = useMemo(() => {
     if (selectedSala === "RESUMEN") return buildDefaultRoomSpeakers();
-    return normalizeRoomSpeakers(salasData[selectedSala], disabledBySala[selectedSala] || []);
-  }, [salasData, selectedSala, disabledBySala]);
+    return normalizeRoomSpeakers(
+      salasData[selectedSala],
+      disabledBySala[selectedSala] || [],
+      currentRoomExtras
+    );
+  }, [salasData, selectedSala, disabledBySala, currentRoomExtras]);
 
   const speakerMapById = useMemo(() => {
     const map: Record<string, SpeakerCheckItem> = {};
@@ -1019,12 +1301,12 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
       if (!isEditingRoomConfig && sp.noTiene) return false;
       if (!isEditingRoomConfig && filterMode === "FALLA" && sp.estado !== "Con falla") return false;
       if (zoneFilter !== "ALL") {
-        const meta = SPEAKERS_5_1.find((m) => m.id === sp.id);
+        const meta = inferSpeakerMeta(sp.id, currentRoomExtras);
         if (meta?.zone !== zoneFilter) return false;
       }
       return true;
     });
-  }, [currentRoomSpeakers, filterMode, zoneFilter, isEditingRoomConfig]);
+  }, [currentRoomSpeakers, filterMode, zoneFilter, isEditingRoomConfig, currentRoomExtras]);
 
   const renderDiagramSpeakerNode = (
     id: SpeakerId,
@@ -1045,11 +1327,13 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
     if (variant === "sw") baseBg = "#8B8046";
     if (variant === "screen") baseBg = "#2B7BBA";
 
-    const bgColor = isMissing ? "#94A3B8" : isFalla ? "#DC2626" : baseBg;
+    const bgColor = isMissing ? "#64748B" : isFalla ? "#DC2626" : baseBg;
     const borderColor = isSelected
       ? "#0F172A"
       : isMissing
-      ? "#475569"
+      ? isEditingRoomConfig
+        ? "#10B981"
+        : "#475569"
       : isFalla
       ? "#991B1B"
       : "#1E3A5F";
@@ -1083,16 +1367,16 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
           {
             backgroundColor: bgColor,
             borderColor,
-            borderWidth: isSelected ? 2.5 : 1.5,
+            borderWidth: isSelected ? 2.5 : isEditingRoomConfig && isMissing ? 2 : 1.5,
             borderStyle: isMissing ? "dashed" : "solid",
-            opacity: isMissing ? (isEditingRoomConfig ? 0.55 : 0.2) : 1,
+            opacity: isMissing ? (isEditingRoomConfig ? 0.78 : 0.2) : 1,
           },
         ]}
       >
         <Text
           style={[
             s.diagramNodeText,
-            isMissing && { textDecorationLine: "line-through", color: "#F1F5F9" },
+            isMissing && !isEditingRoomConfig && { textDecorationLine: "line-through", color: "#F1F5F9" },
           ]}
         >
           {id}
@@ -1102,8 +1386,10 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
             style={[
               s.diagramStatusDot,
               {
-                backgroundColor: isMissing
-                  ? "#475569"
+                backgroundColor: isEditingRoomConfig
+                  ? isMissing
+                    ? "#10B981"
+                    : "#EF4444"
                   : isFalla
                   ? "#FEF2F2"
                   : "#10B981",
@@ -1111,12 +1397,63 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
             ]}
           >
             <MaterialCommunityIcons
-              name={isMissing ? "close" : isFalla ? "alert" : "check"}
-              size={9}
-              color={isMissing ? "#FFFFFF" : isFalla ? "#DC2626" : "#FFFFFF"}
+              name={
+                isEditingRoomConfig
+                  ? isMissing
+                    ? "plus"
+                    : "minus"
+                  : isFalla
+                  ? "alert"
+                  : "check"
+              }
+              size={10}
+              color={
+                isEditingRoomConfig
+                  ? "#FFFFFF"
+                  : isFalla
+                  ? "#DC2626"
+                  : "#FFFFFF"
+              }
             />
           </View>
         )}
+      </TouchableOpacity>
+    );
+  };
+
+  const renderDiagramAddZoneButton = (zone: SpeakerZone, shortLabel: string) => {
+    if (!isEditingRoomConfig || readOnly) return null;
+    return (
+      <TouchableOpacity
+        onPress={() => handleAddSpeakerToSala(selectedSala, zone)}
+        activeOpacity={0.8}
+        // @ts-ignore
+        className="cp-speaker-node"
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 2,
+          backgroundColor: "#059669",
+          borderColor: "#064E3B",
+          borderWidth: 1.5,
+          borderStyle: "dashed",
+          borderRadius: 6,
+          paddingHorizontal: 7,
+          paddingVertical: 5,
+          minHeight: 32,
+        }}
+      >
+        <MaterialCommunityIcons name="plus-thick" size={11} color="#FFFFFF" />
+        <Text
+          style={{
+            fontSize: 10,
+            fontWeight: "900",
+            color: "#FFFFFF",
+          }}
+        >
+          {shortLabel}
+        </Text>
       </TouchableOpacity>
     );
   };
@@ -1126,6 +1463,27 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
   const render51VisualDiagram = () => {
     const roomFallas = stats.fallasPorSala[selectedSala] || 0;
     const roomActivos = stats.activosPorSala[selectedSala] ?? 21;
+
+    const swIds = currentRoomCatalog
+      .filter((m) => m.zone === "Subwoofer")
+      .map((m) => m.id);
+    const screenIds = currentRoomCatalog
+      .filter((m) => m.zone === "Pantalla (L/C/R)")
+      .map((m) => m.id);
+    const lsIds = currentRoomCatalog
+      .filter((m) => m.zone === "Left Surround (LS)")
+      .map((m) => m.id);
+    const rsIds = currentRoomCatalog
+      .filter((m) => m.zone === "Right Surround (RS)")
+      .map((m) => m.id);
+
+    const lsRearCount = lsIds.length >= 4 ? 2 : 0;
+    const lsSideIds = lsIds.slice(0, lsIds.length - lsRearCount);
+    const lsRearIds = lsIds.slice(lsIds.length - lsRearCount);
+
+    const rsRearCount = rsIds.length >= 4 ? 2 : 0;
+    const rsSideIds = rsIds.slice(0, rsIds.length - rsRearCount);
+    const rsRearIds = rsIds.slice(rsIds.length - rsRearCount).slice().reverse();
 
     return (
       <View style={s.diagramCard}>
@@ -1208,7 +1566,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
 
           <Text style={s.diagramCardSub}>
             {isEditingRoomConfig
-              ? "Tocá cualquier parlante para activar o quitarlo de esta sala"
+              ? "Tocá un parlante para quitar (-) o agregar (+), o usá los botones + de cada zona"
               : mapClickTogglesState
               ? "Tocá un parlante para cambiar su estado (Óptimo / Con falla)"
               : "Tocá un parlante para resaltarlo en la planilla"}
@@ -1217,24 +1575,22 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
 
         {/* Contenedor del Plano estilo esquema técnico 5.1 */}
         <View style={s.acousticCanvas}>
-          {/* 1. Fila Superior: Subwoofer + SW1..SW4 */}
+          {/* 1. Fila Superior: Subwoofer + SW1..SWn */}
           <View style={s.swRow}>
             <View style={s.orangeTagBox}>
               <Text style={s.orangeTagText}>Subwoofer</Text>
             </View>
-            <View style={s.swNodesRow}>
-              {(["SW1", "SW2", "SW3", "SW4"] as SpeakerId[]).map((id) =>
-                renderDiagramSpeakerNode(id, "sw")
-              )}
+            <View style={[s.swNodesRow, { flexWrap: "wrap" }]}>
+              {swIds.map((id) => renderDiagramSpeakerNode(id, "sw"))}
+              {renderDiagramAddZoneButton("Subwoofer", "SW")}
             </View>
           </View>
 
           {/* 2. Fila de Pantalla: L, C, R + línea de pantalla + Left, Center, Right */}
           <View style={s.screenSection}>
-            <View style={s.lcrNodesRow}>
-              {(["L", "C", "R"] as SpeakerId[]).map((id) =>
-                renderDiagramSpeakerNode(id, "screen")
-              )}
+            <View style={[s.lcrNodesRow, { flexWrap: "wrap", gap: 6 }]}>
+              {screenIds.map((id) => renderDiagramSpeakerNode(id, "screen"))}
+              {renderDiagramAddZoneButton("Pantalla (L/C/R)", "Canal")}
             </View>
             <View style={s.screenBlackLine} />
             <View style={s.lcrLabelsRow}>
@@ -1262,13 +1618,12 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
             </View>
           </View>
 
-          {/* 4. Cuerpo de la Sala: LS1-LS5 (Izq) | Centro 5.1 | RS1-RS5 (Der) */}
+          {/* 4. Cuerpo de la Sala: LS (Izq) | Centro 5.1 | RS (Der) */}
           <View style={s.roomWallsBody}>
-            {/* Pared Izquierda LS1..LS5 */}
+            {/* Pared Izquierda LS */}
             <View style={s.sideWallCol}>
-              {(["LS1", "LS2", "LS3", "LS4", "LS5"] as SpeakerId[]).map((id) =>
-                renderDiagramSpeakerNode(id, "left")
-              )}
+              {lsSideIds.map((id) => renderDiagramSpeakerNode(id, "left"))}
+              {renderDiagramAddZoneButton("Left Surround (LS)", "LS")}
             </View>
 
             {/* Centro de la Sala: Badge 5.1 */}
@@ -1326,23 +1681,20 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
               )}
             </View>
 
-            {/* Pared Derecha RS1..RS5 */}
+            {/* Pared Derecha RS */}
             <View style={s.sideWallCol}>
-              {(["RS1", "RS2", "RS3", "RS4", "RS5"] as SpeakerId[]).map((id) =>
-                renderDiagramSpeakerNode(id, "right")
-              )}
+              {rsSideIds.map((id) => renderDiagramSpeakerNode(id, "right"))}
+              {renderDiagramAddZoneButton("Right Surround (RS)", "RS")}
             </View>
           </View>
 
-          {/* 5. Pared Trasera: LS6, LS7 y RS7, RS6 (exactamente como en el plano) */}
+          {/* 5. Pared Trasera: LS traseros y RS traseros (exactamente como en el plano) */}
           <View style={s.rearWallRow}>
             <View style={s.rearPair}>
-              {renderDiagramSpeakerNode("LS6", "rear")}
-              {renderDiagramSpeakerNode("LS7", "rear")}
+              {lsRearIds.map((id) => renderDiagramSpeakerNode(id, "rear"))}
             </View>
             <View style={s.rearPair}>
-              {renderDiagramSpeakerNode("RS7", "rear")}
-              {renderDiagramSpeakerNode("RS6", "rear")}
+              {rsRearIds.map((id) => renderDiagramSpeakerNode(id, "rear"))}
             </View>
           </View>
         </View>
@@ -1351,7 +1703,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
         <View style={s.diagramLegendRow}>
           <View style={s.legendItem}>
             <View style={[s.legendSwatch, { backgroundColor: "#8B8046" }]} />
-            <Text style={s.legendLabel}>SW1-SW4</Text>
+            <Text style={s.legendLabel}>SW</Text>
           </View>
           <View style={s.legendItem}>
             <View style={[s.legendSwatch, { backgroundColor: "#2B7BBA" }]} />
@@ -1799,20 +2151,141 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                     backgroundColor: COLORS.primarySoft,
                     borderWidth: 1,
                     borderColor: COLORS.primary,
-                    borderRadius: 10,
-                    padding: 10,
+                    borderRadius: 12,
+                    padding: 12,
                     marginBottom: 12,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 8,
+                    gap: 10,
                   }}
                 >
-                  <MaterialCommunityIcons name="tune-variant" size={18} color={COLORS.primary} />
-                  <Text style={{ fontSize: 12, color: COLORS.text, fontWeight: "700", flex: 1 }}>
-                    Modo Edición de Sala {selectedSala}: Desmarcá los parlantes que esta sala físicamente{" "}
-                    <Text style={{ fontWeight: "900", color: COLORS.primary }}>no tiene</Text> (tocándolos en el esquema 5.1 o con el botón "Tiene / No tiene"). Los parlantes desactivados se guardan automáticamente y no aparecerán en la planilla ni en el reporte HTML/PDF.
-                  </Text>
-                  {savingRoomConfig && <ActivityIndicator size="small" color={COLORS.primary} />}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <MaterialCommunityIcons name="tune-variant" size={18} color={COLORS.primary} />
+                    <Text style={{ fontSize: 12, color: COLORS.text, fontWeight: "700", flex: 1 }}>
+                      Modo Edición de Sala {selectedSala}: Tocá cualquier parlante en el plano para{" "}
+                      <Text style={{ fontWeight: "900", color: COLORS.danger }}>quitarlo (-)</Text>{" "}
+                      o{" "}
+                      <Text style={{ fontWeight: "900", color: COLORS.success }}>agregarlo (+)</Text>
+                      , o sumá nuevos parlantes a la sala con los botones de abajo. Los parlantes marcados como "No tiene" no aparecen en el reporte.
+                    </Text>
+                    {savingRoomConfig && <ActivityIndicator size="small" color={COLORS.primary} />}
+                  </View>
+
+                  {/* Botones rápidos para agregar parlantes por zona + creador personalizado */}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      gap: 8,
+                      paddingTop: 6,
+                      borderTopWidth: 1,
+                      borderTopColor: COLORS.border,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: "800",
+                        color: COLORS.muted,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Agregar parlante:
+                    </Text>
+
+                    {[
+                      { zone: "Subwoofer" as SpeakerZone, label: "+ Subwoofer (SW)", color: "#8B8046" },
+                      { zone: "Pantalla (L/C/R)" as SpeakerZone, label: "+ Pantalla (L/C/R)", color: "#2B7BBA" },
+                      { zone: "Left Surround (LS)" as SpeakerZone, label: "+ Left Surround (LS)", color: "#E59824" },
+                      { zone: "Right Surround (RS)" as SpeakerZone, label: "+ Right Surround (RS)", color: "#E59824" },
+                    ].map((btn) => (
+                      <TouchableOpacity
+                        key={btn.zone}
+                        onPress={() => handleAddSpeakerToSala(selectedSala, btn.zone)}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 4,
+                          backgroundColor: btn.color,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 8,
+                        }}
+                      >
+                        <MaterialCommunityIcons name="plus-circle-outline" size={14} color="#FFFFFF" />
+                        <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#FFFFFF" }}>
+                          {btn.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <TextInput
+                        value={customSpeakerIdInput}
+                        onChangeText={(v) => setCustomSpeakerIdInput(v.toUpperCase())}
+                        placeholder="ID (ej: LS8, SW5)"
+                        placeholderTextColor={COLORS.muted}
+                        style={[
+                          s.cellInput,
+                          { width: 125, height: 32, backgroundColor: COLORS.card },
+                        ]}
+                      />
+                      {Platform.OS === "web" && (
+                        <select
+                          value={customSpeakerZoneInput}
+                          onChange={(e) =>
+                            setCustomSpeakerZoneInput(e.target.value as SpeakerZone)
+                          }
+                          style={{
+                            height: 32,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: COLORS.border,
+                            backgroundColor: COLORS.card,
+                            color: COLORS.text,
+                            fontSize: 11.5,
+                            fontWeight: "700",
+                            paddingHorizontal: 8,
+                          } as any}
+                        >
+                          <option value="Subwoofer">Subwoofer</option>
+                          <option value="Pantalla (L/C/R)">Pantalla (L/C/R)</option>
+                          <option value="Left Surround (LS)">Left Surround (LS)</option>
+                          <option value="Right Surround (RS)">Right Surround (RS)</option>
+                        </select>
+                      )}
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (!customSpeakerIdInput.trim()) return;
+                          handleAddSpeakerToSala(
+                            selectedSala,
+                            customSpeakerZoneInput,
+                            customSpeakerIdInput
+                          );
+                        }}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 4,
+                          backgroundColor: COLORS.success,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 8,
+                        }}
+                      >
+                        <MaterialCommunityIcons name="plus-thick" size={13} color="#FFFFFF" />
+                        <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#FFFFFF" }}>
+                          Agregar ID
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </View>
               )}
 
@@ -1860,8 +2333,8 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                     { key: "ALL", label: "Todas las Zonas" },
                     { key: "Subwoofer", label: "SW" },
                     { key: "Pantalla (L/C/R)", label: "L/C/R" },
-                    { key: "Left Surround (LS)", label: "LS1-LS7" },
-                    { key: "Right Surround (RS)", label: "RS1-RS7" },
+                    { key: "Left Surround (LS)", label: "LS" },
+                    { key: "Right Surround (RS)", label: "RS" },
                   ].map((z) => (
                     <TouchableOpacity
                       key={z.key}
@@ -1888,7 +2361,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
               {isMobile ? (
                 <View style={{ gap: 10, marginTop: 8 }}>
                   {filteredRoomSpeakers.map((item) => {
-                    const meta = SPEAKERS_5_1.find((m) => m.id === item.id)!;
+                    const meta = inferSpeakerMeta(item.id, currentRoomExtras);
                     const isNoTiene = Boolean(item.noTiene);
                     const isFalla = !isNoTiene && item.estado === "Con falla";
                     const isHighlighted = highlightedSpeaker === item.id;
@@ -1937,24 +2410,27 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                                 s.statusToggleBtn,
                                 isNoTiene
                                   ? {
-                                      backgroundColor: "#F1F5F9",
-                                      borderColor: "#94A3B8",
+                                      backgroundColor: "#ECFDF5",
+                                      borderColor: "#10B981",
                                     }
-                                  : s.statusToggleOptimo,
+                                  : {
+                                      backgroundColor: "#FEF2F2",
+                                      borderColor: "#FCA5A5",
+                                    },
                               ]}
                             >
                               <MaterialCommunityIcons
-                                name={isNoTiene ? "close-circle-outline" : "check-circle"}
+                                name={isNoTiene ? "plus-circle" : "minus-circle-outline"}
                                 size={15}
-                                color={isNoTiene ? "#475569" : "#059669"}
+                                color={isNoTiene ? "#059669" : "#DC2626"}
                               />
                               <Text
                                 style={[
                                   s.statusToggleText,
-                                  { color: isNoTiene ? "#475569" : "#059669" },
+                                  { color: isNoTiene ? "#059669" : "#DC2626" },
                                 ]}
                               >
-                                {isNoTiene ? "No tiene" : "Tiene"}
+                                {isNoTiene ? "Agregar (+)" : "Quitar (-)"}
                               </Text>
                             </TouchableOpacity>
                           ) : (
@@ -2048,7 +2524,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                   </View>
 
                   {filteredRoomSpeakers.map((item, idx) => {
-                    const meta = SPEAKERS_5_1.find((m) => m.id === item.id)!;
+                    const meta = inferSpeakerMeta(item.id, currentRoomExtras);
                     const isNoTiene = Boolean(item.noTiene);
                     const isFalla = !isNoTiene && item.estado === "Con falla";
                     const isHighlighted = highlightedSpeaker === item.id;
@@ -2097,7 +2573,7 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                           <Text style={s.zoneSubText}>{meta.zone}</Text>
                         </View>
 
-                        {/* Estado (Óptimo / Con falla) o Configuración (Tiene / No tiene) */}
+                        {/* Estado (Óptimo / Con falla) o Configuración (Agregar / Quitar) */}
                         <View
                           style={{
                             flex: 1.7,
@@ -2117,24 +2593,27 @@ export default function ControlParlantesScreen({ readOnly = false }: { readOnly?
                                 s.statusToggleBtn,
                                 isNoTiene
                                   ? {
-                                      backgroundColor: "#F1F5F9",
-                                      borderColor: "#94A3B8",
+                                      backgroundColor: "#ECFDF5",
+                                      borderColor: "#10B981",
                                     }
-                                  : s.statusToggleOptimo,
+                                  : {
+                                      backgroundColor: "#FEF2F2",
+                                      borderColor: "#FCA5A5",
+                                    },
                               ]}
                             >
                               <MaterialCommunityIcons
-                                name={isNoTiene ? "close-circle-outline" : "check-circle"}
+                                name={isNoTiene ? "plus-circle" : "minus-circle-outline"}
                                 size={15}
-                                color={isNoTiene ? "#475569" : "#059669"}
+                                color={isNoTiene ? "#059669" : "#DC2626"}
                               />
                               <Text
                                 style={[
                                   s.statusToggleText,
-                                  { color: isNoTiene ? "#475569" : "#059669" },
+                                  { color: isNoTiene ? "#059669" : "#DC2626" },
                                 ]}
                               >
-                                {isNoTiene ? "No tiene" : "Tiene"}
+                                {isNoTiene ? "Agregar (+)" : "Quitar (-)"}
                               </Text>
                             </TouchableOpacity>
                           ) : (
