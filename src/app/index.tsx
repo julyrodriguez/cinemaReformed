@@ -63,6 +63,7 @@ import MapaBannersScreen from "./screens/MapaBannersScreen";
 import CompanyScreen from "./screens/CompanyScreen";
 import FeedbackScreen from "./screens/FeedbackScreen";
 import CustomPostersScreen from "./screens/CustomPostersScreen";
+import StockMaterialesScreen from "./screens/StockMaterialesScreen";
 
 type MainTab =
   | "PROGRAMACIÓN"
@@ -91,6 +92,7 @@ type MarketingSubTab =
   | "PROGRAMACION"
   | "CONTROL_SALAS"
   | "MAPA_BANNERS"
+  | "STOCK_MATERIALES"
   | "CUSTOM_POSTERS";
 
 type CoordinadoresSubTab =
@@ -129,6 +131,7 @@ const SUB_TABS = {
     { key: "MKT", label: "Marketing", icon: "bullhorn-outline" },
     { key: "CONTROL_SALAS", label: "Control de Salas", icon: "sofa-single-outline" },
     { key: "MAPA_BANNERS", label: "Banners y Marquesinas", icon: "map-marker-outline" },
+    { key: "STOCK_MATERIALES", label: "Stock Materiales", icon: "package-variant-closed" },
     { key: "CUSTOM_POSTERS", label: "Pósters Custom", icon: "image-plus" },
   ],
   COORDINADORES: [
@@ -954,6 +957,7 @@ export default function Home() {
             {marketingTab === "PROGRAMACION" && <ProgramacionTab />}
             {marketingTab === "CONTROL_SALAS" && <ControlSalasScreen />}
             {marketingTab === "MAPA_BANNERS" && <MapaBannersScreen />}
+            {marketingTab === "STOCK_MATERIALES" && <StockMaterialesScreen />}
             {marketingTab === "CUSTOM_POSTERS" && <CustomPostersScreen />}
           </View>
         </View>

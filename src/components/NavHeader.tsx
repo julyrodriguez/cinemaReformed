@@ -24,6 +24,20 @@ export type NewsItem = {
 
 const DEFAULT_NEWS: NewsItem[] = [
   {
+    id: "stock-materiales-servicios",
+    tag: "MATERIALES",
+    badgeColor: "#38BDF8",
+    badgeBg: "rgba(56, 189, 248, 0.14)",
+    icon: "package-variant-closed",
+    title: "Servicios: Nuevo Controlador de Stock de Materiales",
+    message:
+      "Servicios: Nuevo apartado Stock Materiales para controlar inventario en bodega y exposición de Pósters, Banners y Standees.",
+    detail:
+      "Se incorporó en Servicios la sección 'Stock Materiales' para gestionar Pósters, Banners y Standees con integración a TMDB, URL, sin imagen o archivo local, descontando automáticamente de bodega las unidades puestas en exposición.",
+    ticker: "STOCK:MAT ▲",
+    date: "Nuevo",
+  },
+  {
     id: "control-mensual-parlantes",
     tag: "SONIDO 5.1",
     badgeColor: "#34D399",
