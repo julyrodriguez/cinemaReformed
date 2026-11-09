@@ -335,6 +335,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [adjustShowtimes, setAdjustShowtimes] = useState<boolean>(false);
 
   // Dedicated Mobile View State
+  const [mobileShowTmsView, setMobileShowTmsView] = useState<boolean>(false);
   const [mobileViewMode, setMobileViewMode] = useState<"timeline" | "movies" | "rooms">("rooms");
   const [mobileSearchQuery, setMobileSearchQuery] = useState<string>("");
   const [mobileFilter, setMobileFilter] = useState<"all" | "playing" | "upcoming" | "3d" | "events">("all");
@@ -3293,7 +3294,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       ? `Semana del ${savedWeekly.startDate}`
       : "Programación Semanal");
 
-  const hasHeaderContent = !isMobile && (!!formattedWeekLabel || !useApiData || (useApiData && !!apiError));
+  const hasHeaderContent = (!isMobile || mobileShowTmsView) && (!!formattedWeekLabel || !useApiData || (useApiData && !!apiError));
 
   // -------------------------------------------------------------
   // MOBILE REDESIGNED PROGRAMMING VIEW
@@ -3301,6 +3302,34 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const renderMobileProgrammingView = () => {
     return (
       <div className="w-full flex flex-col gap-3 pb-24">
+        {/* Prominent Button to switch to TMS (PC) View */}
+        <button
+          type="button"
+          onClick={() => {
+            lastScrolledDay.current = null;
+            setMobileShowTmsView(true);
+          }}
+          className="w-full flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500 hover:from-rose-700 hover:via-rose-600 hover:to-amber-600 active:scale-[0.99] text-white shadow-md shadow-rose-500/25 border border-rose-400/40 transition-all cursor-pointer"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0">
+              <LayoutGrid size={19} className="text-white" />
+            </div>
+            <div className="flex flex-col items-start text-left min-w-0">
+              <span className="text-sm font-black tracking-wide uppercase leading-tight">
+                Ver programación estilo TMS
+              </span>
+              <span className="text-[11px] font-semibold text-rose-100 leading-tight mt-0.5">
+                Ver grilla horizontal de salas igual que en PC
+              </span>
+            </div>
+          </div>
+          <div className="px-2.5 py-1 rounded-xl bg-white/20 text-[11px] font-black uppercase tracking-wider shrink-0 flex items-center gap-1">
+            <span>Abrir</span>
+            <ChevronRight size={14} />
+          </div>
+        </button>
+
         {/* Mobile Header Card: Week Selector & Actions */}
         <div className="rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 shadow-xs p-3 flex flex-col gap-2.5">
           {/* Week Selector */}
@@ -4053,10 +4082,34 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
-        {isMobile ? (
+        {isMobile && !mobileShowTmsView ? (
           renderMobileProgrammingView()
         ) : (
           <ScrollView ref={verticalScrollRef} style={styles.verticalScrollView} bounces={false}>
+            {isMobile && mobileShowTmsView && (
+              <button
+                type="button"
+                onClick={() => setMobileShowTmsView(false)}
+                className="w-full mb-3 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-slate-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-md border border-slate-700 dark:border-zinc-300 active:scale-[0.99] transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0">
+                    <ArrowLeft size={16} />
+                  </div>
+                  <div className="flex flex-col items-start text-left min-w-0">
+                    <span className="text-xs font-black uppercase tracking-wide leading-tight">
+                      Programación estilo TMS activa
+                    </span>
+                    <span className="text-[11px] font-semibold text-slate-300 dark:text-zinc-600 leading-tight mt-0.5">
+                      Tocá acá para volver a la vista Mobile
+                    </span>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-xl bg-white/15 dark:bg-zinc-900/10 text-[11px] font-bold shrink-0">
+                  Vista Mobile
+                </span>
+              </button>
+            )}
 
           {/* Days Tabs Selection & Controls Toolbar */}
           <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs p-2.5 mb-3 flex flex-col gap-2.5">
