@@ -26,6 +26,8 @@ import {
   CheckCircle2,
   LayoutGrid,
   List,
+  Save,
+  RotateCcw,
 } from "lucide-react";
 import {
   collection,
@@ -194,8 +196,12 @@ export default function StockMaterialesScreen() {
   const userEmail = user?.email || cineId || "sistema";
 
   const [items, setItems] = useState<MaterialStockItem[]>([]);
+  const [savedQuantities, setSavedQuantities] = useState<
+    Record<string, { enBodega: number; enExposicion: number }>
+  >({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingBatch, setSavingBatch] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   // Filters & View Mode
@@ -284,6 +290,14 @@ export default function StockMaterialesScreen() {
         (a, b) =>
           new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
       );
+      const initialSaved: Record<string, { enBodega: number; enExposicion: number }> = {};
+      list.forEach((it) => {
+        initialSaved[it.id] = {
+          enBodega: it.enBodega,
+          enExposicion: it.enExposicion,
+        };
+      });
+      setSavedQuantities(initialSaved);
       setItems(list);
     } catch (err) {
       console.error("Error loading stock materiales:", err);
@@ -621,11 +635,8 @@ export default function StockMaterialesScreen() {
     }
   };
 
-  // Move units between Bodega and Exposición:
-  // Putting +delta in Exposición subtracts delta from Bodega!
-  // Putting -delta in Exposición returns delta to Bodega!
-  const handleAdjustExposicion = async (item: MaterialStockItem, deltaExpo: number) => {
-    if (!cineId) return;
+  // Stage local change between Bodega and Exposición (does NOT auto-save until confirmed)
+  const handleAdjustExposicion = (item: MaterialStockItem, deltaExpo: number) => {
     const total = item.enBodega + item.enExposicion;
     const nextExpo = item.enExposicion + deltaExpo;
     if (nextExpo < 0 || nextExpo > total) return;
@@ -635,66 +646,129 @@ export default function StockMaterialesScreen() {
       ...item,
       enBodega: nextBodega,
       enExposicion: nextExpo,
-      updatedAt: new Date().toISOString(),
-      updatedBy: userEmail,
     };
 
     setItems((prev) => prev.map((it) => (it.id === item.id ? updatedItem : it)));
-    setUpdatingId(item.id);
-    try {
-      const docRef = doc(db, CINES_COLLECTION, cineId, "stock_materiales", item.id);
-      await setDoc(docRef, {
-        categoria: updatedItem.categoria,
-        titulo: updatedItem.titulo,
-        notas: updatedItem.notas || "",
-        posterUrl: updatedItem.posterUrl || "",
-        imageSource: updatedItem.imageSource || "none",
-        enBodega: updatedItem.enBodega,
-        enExposicion: updatedItem.enExposicion,
-        updatedAt: updatedItem.updatedAt,
-        updatedBy: updatedItem.updatedBy,
-      });
-    } catch (e) {
-      console.error("Error updating exposition stock:", e);
-      await loadMaterials();
-    } finally {
-      setUpdatingId(null);
-    }
   };
 
-  // Adjust Bodega directly (when new material arrives to warehouse or is discarded)
-  const handleAdjustBodega = async (item: MaterialStockItem, deltaBodega: number) => {
-    if (!cineId) return;
+  // Stage local Bodega adjustment (does NOT auto-save until confirmed)
+  const handleAdjustBodega = (item: MaterialStockItem, deltaBodega: number) => {
     const nextBodega = item.enBodega + deltaBodega;
     if (nextBodega < 0) return;
 
     const updatedItem: MaterialStockItem = {
       ...item,
       enBodega: nextBodega,
-      updatedAt: new Date().toISOString(),
-      updatedBy: userEmail,
     };
 
     setItems((prev) => prev.map((it) => (it.id === item.id ? updatedItem : it)));
+  };
+
+  // Detect which items have unsaved Bodega / Exposición changes
+  const isItemDirty = useCallback(
+    (item: MaterialStockItem) => {
+      const orig = savedQuantities[item.id];
+      if (!orig) return false;
+      return orig.enBodega !== item.enBodega || orig.enExposicion !== item.enExposicion;
+    },
+    [savedQuantities]
+  );
+
+  const dirtyItems = useMemo(
+    () => items.filter((item) => isItemDirty(item)),
+    [items, isItemDirty]
+  );
+
+  const handleDiscardItemChanges = (itemId: string) => {
+    const orig = savedQuantities[itemId];
+    if (!orig) return;
+    setItems((prev) =>
+      prev.map((it) =>
+        it.id === itemId
+          ? { ...it, enBodega: orig.enBodega, enExposicion: orig.enExposicion }
+          : it
+      )
+    );
+  };
+
+  const handleDiscardAllChanges = () => {
+    setItems((prev) =>
+      prev.map((it) => {
+        const orig = savedQuantities[it.id];
+        if (!orig) return it;
+        return { ...it, enBodega: orig.enBodega, enExposicion: orig.enExposicion };
+      })
+    );
+  };
+
+  const handleSaveSingleItemStock = async (item: MaterialStockItem) => {
+    if (!cineId) return;
     setUpdatingId(item.id);
     try {
+      const nowIso = new Date().toISOString();
       const docRef = doc(db, CINES_COLLECTION, cineId, "stock_materiales", item.id);
       await setDoc(docRef, {
-        categoria: updatedItem.categoria,
-        titulo: updatedItem.titulo,
-        notas: updatedItem.notas || "",
-        posterUrl: updatedItem.posterUrl || "",
-        imageSource: updatedItem.imageSource || "none",
-        enBodega: updatedItem.enBodega,
-        enExposicion: updatedItem.enExposicion,
-        updatedAt: updatedItem.updatedAt,
-        updatedBy: updatedItem.updatedBy,
+        categoria: item.categoria,
+        titulo: item.titulo,
+        notas: item.notas || "",
+        posterUrl: item.posterUrl || "",
+        imageSource: item.imageSource || "none",
+        enBodega: item.enBodega,
+        enExposicion: item.enExposicion,
+        updatedAt: nowIso,
+        updatedBy: userEmail,
       });
+      setSavedQuantities((prev) => ({
+        ...prev,
+        [item.id]: { enBodega: item.enBodega, enExposicion: item.enExposicion },
+      }));
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === item.id ? { ...it, updatedAt: nowIso, updatedBy: userEmail } : it
+        )
+      );
     } catch (e) {
-      console.error("Error updating bodega stock:", e);
-      await loadMaterials();
+      console.error("Error saving item stock:", e);
+      Alert.alert("Error", "No se pudo guardar el cambio de stock.");
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const handleSaveAllDirtyItems = async () => {
+    if (!cineId || dirtyItems.length === 0) return;
+    setSavingBatch(true);
+    try {
+      const nowIso = new Date().toISOString();
+      await Promise.all(
+        dirtyItems.map(async (item) => {
+          const docRef = doc(db, CINES_COLLECTION, cineId, "stock_materiales", item.id);
+          await setDoc(docRef, {
+            categoria: item.categoria,
+            titulo: item.titulo,
+            notas: item.notas || "",
+            posterUrl: item.posterUrl || "",
+            imageSource: item.imageSource || "none",
+            enBodega: item.enBodega,
+            enExposicion: item.enExposicion,
+            updatedAt: nowIso,
+            updatedBy: userEmail,
+          });
+        })
+      );
+
+      setSavedQuantities((prev) => {
+        const next = { ...prev };
+        dirtyItems.forEach((it) => {
+          next[it.id] = { enBodega: it.enBodega, enExposicion: it.enExposicion };
+        });
+        return next;
+      });
+    } catch (e) {
+      console.error("Error saving batch stock changes:", e);
+      Alert.alert("Error", "No se pudieron guardar todos los cambios de stock.");
+    } finally {
+      setSavingBatch(false);
     }
   };
 
@@ -706,8 +780,8 @@ export default function StockMaterialesScreen() {
     setExpoModalError(null);
   };
 
-  const handleSaveExpoModal = async () => {
-    if (!expoModalItem || !cineId) return;
+  const handleSaveExpoModal = () => {
+    if (!expoModalItem) return;
     setExpoModalError(null);
 
     const totalNum = parseInt(bodegaTotalInputVal, 10);
@@ -733,40 +807,12 @@ export default function StockMaterialesScreen() {
       ...expoModalItem,
       enBodega: nextBodega,
       enExposicion: expoNum,
-      updatedAt: new Date().toISOString(),
-      updatedBy: userEmail,
     };
 
-    setUpdatingId(expoModalItem.id);
-    try {
-      const docRef = doc(
-        db,
-        CINES_COLLECTION,
-        cineId,
-        "stock_materiales",
-        expoModalItem.id
-      );
-      await setDoc(docRef, {
-        categoria: updatedItem.categoria,
-        titulo: updatedItem.titulo,
-        notas: updatedItem.notas || "",
-        posterUrl: updatedItem.posterUrl || "",
-        imageSource: updatedItem.imageSource || "none",
-        enBodega: updatedItem.enBodega,
-        enExposicion: updatedItem.enExposicion,
-        updatedAt: updatedItem.updatedAt,
-        updatedBy: updatedItem.updatedBy,
-      });
-      setItems((prev) =>
-        prev.map((it) => (it.id === updatedItem.id ? updatedItem : it))
-      );
-      setExpoModalItem(null);
-    } catch (e: any) {
-      console.error("Error saving exposition modal:", e);
-      setExpoModalError(e?.message || "No se pudo actualizar el stock.");
-    } finally {
-      setUpdatingId(null);
-    }
+    setItems((prev) =>
+      prev.map((it) => (it.id === updatedItem.id ? updatedItem : it))
+    );
+    setExpoModalItem(null);
   };
 
   const confirmDelete = async () => {
@@ -1047,12 +1093,17 @@ export default function StockMaterialesScreen() {
             const meta = CATEGORY_META[item.categoria] || CATEGORY_META.poster;
             const total = item.enBodega + item.enExposicion;
             const isUpdating = updatingId === item.id;
+            const dirty = isItemDirty(item);
 
             return (
               <div
                 key={item.id}
                 style={{ animationDelay: `${Math.min(idx * 15, 180)}ms` }}
-                className="animate-card-in px-3 sm:px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-slate-50/80 dark:hover:bg-zinc-950/50 transition-colors"
+                className={`animate-card-in px-3 sm:px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-colors ${
+                  dirty
+                    ? "bg-rose-50/40 dark:bg-rose-950/20"
+                    : "hover:bg-slate-50/80 dark:hover:bg-zinc-950/50"
+                }`}
               >
                 {/* Left: Mini Thumbnail + Category Pill + Title & Notes */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -1160,6 +1211,27 @@ export default function StockMaterialesScreen() {
 
                   {/* Action Buttons */}
                   <div className="flex items-center gap-1">
+                    {dirty && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={isUpdating}
+                          onClick={() => handleSaveSingleItemStock(item)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold shadow-2xs cursor-pointer animate-pop-in"
+                        >
+                          <Save size={11} />
+                          <span>{isUpdating ? "Guardando…" : "Guardar cambios"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDiscardItemChanges(item.id)}
+                          title="Descartar cambio"
+                          className="w-7 h-7 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-slate-400 hover:text-slate-700 flex items-center justify-center cursor-pointer"
+                        >
+                          <RotateCcw size={11} />
+                        </button>
+                      </>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleOpenExpoModal(item)}
@@ -1196,12 +1268,17 @@ export default function StockMaterialesScreen() {
             const meta = CATEGORY_META[item.categoria] || CATEGORY_META.poster;
             const total = item.enBodega + item.enExposicion;
             const isUpdating = updatingId === item.id;
+            const dirty = isItemDirty(item);
 
             return (
               <div
                 key={item.id}
                 style={{ animationDelay: `${Math.min(idx * 25, 250)}ms` }}
-                className="animate-card-in hover-lift group bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/90 dark:border-zinc-800 shadow-xs overflow-hidden flex flex-col justify-between"
+                className={`animate-card-in hover-lift group bg-white dark:bg-zinc-900 rounded-2xl border shadow-xs overflow-hidden flex flex-col justify-between ${
+                  dirty
+                    ? "border-rose-400 dark:border-rose-500/70 ring-2 ring-rose-500/15"
+                    : "border-slate-200/90 dark:border-zinc-800"
+                }`}
               >
                 {/* Top Poster / Placeholder Area */}
                 <div className="relative aspect-[2/2.6] w-full bg-slate-100 dark:bg-zinc-950 overflow-hidden">
@@ -1374,6 +1451,29 @@ export default function StockMaterialesScreen() {
                       <ArrowRightLeft size={11} className="text-rose-500" />
                       <span>Mover Bodega ↔ Exposición</span>
                     </button>
+
+                    {/* Confirm / Save Button when stock is modified */}
+                    {dirty && (
+                      <div className="pt-1 flex items-center gap-1.5 animate-pop-in">
+                        <button
+                          type="button"
+                          disabled={isUpdating}
+                          onClick={() => handleSaveSingleItemStock(item)}
+                          className="flex-1 py-1.5 px-2.5 rounded-lg bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-700 hover:to-rose-600 text-white text-[11px] font-extrabold shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Save size={12} />
+                          <span>{isUpdating ? "Guardando…" : "Guardar cambios"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDiscardItemChanges(item.id)}
+                          title="Descartar cambios"
+                          className="w-7 h-7 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-slate-500 hover:text-slate-800 flex items-center justify-center shrink-0 cursor-pointer"
+                        >
+                          <RotateCcw size={12} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1833,27 +1933,24 @@ export default function StockMaterialesScreen() {
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {/* Total Stock Stepper */}
-                      <div className="rounded-xl bg-slate-50/90 dark:bg-zinc-950 border border-slate-200/90 dark:border-zinc-800 p-3 flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <span className="block text-xs font-extrabold text-slate-800 dark:text-zinc-200">
+                      <div className="rounded-xl bg-slate-50/90 dark:bg-zinc-950 border border-slate-200/90 dark:border-zinc-800 p-3 flex flex-col gap-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-extrabold text-slate-800 dark:text-zinc-200">
                             Stock Total
                           </span>
-                          <span className="block text-[10px] text-slate-500 dark:text-zinc-400">
-                            En bodega:{" "}
-                            <strong className="text-amber-700 dark:text-amber-300 tabular-nums">
-                              {computedModalBodega} u.
-                            </strong>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-500/15 border border-amber-200/80 dark:border-amber-500/30 text-[10px] font-bold text-amber-800 dark:text-amber-300 tabular-nums">
+                            Bodega: {computedModalBodega} u.
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-1 bg-white dark:bg-zinc-900 p-1 rounded-xl border border-slate-200/90 dark:border-zinc-800 shadow-2xs">
+                        <div className="w-full flex items-center justify-between bg-white dark:bg-zinc-900 p-1.5 rounded-xl border border-slate-200/90 dark:border-zinc-800 shadow-2xs">
                           <button
                             type="button"
                             onClick={() => stepModalTotal(-1)}
                             disabled={parsedModalTotal <= 0}
-                            className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 disabled:opacity-35 flex items-center justify-center cursor-pointer"
+                            className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 disabled:opacity-35 flex items-center justify-center cursor-pointer"
                           >
-                            <Minus size={13} />
+                            <Minus size={14} />
                           </button>
                           <input
                             type="text"
@@ -1862,37 +1959,37 @@ export default function StockMaterialesScreen() {
                             onChange={(e) =>
                               setFormStockTotal(e.target.value.replace(/[^\d]/g, ""))
                             }
-                            className="w-10 text-center bg-transparent text-xs font-black text-slate-900 dark:text-zinc-100 tabular-nums focus:outline-none"
+                            className="w-16 text-center bg-transparent text-sm font-black text-slate-900 dark:text-zinc-100 tabular-nums focus:outline-none"
                           />
                           <button
                             type="button"
                             onClick={() => stepModalTotal(1)}
-                            className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 flex items-center justify-center cursor-pointer"
+                            className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 flex items-center justify-center cursor-pointer"
                           >
-                            <Plus size={13} />
+                            <Plus size={14} />
                           </button>
                         </div>
                       </div>
 
                       {/* Exposición Stepper */}
-                      <div className="rounded-xl bg-emerald-50/50 dark:bg-emerald-500/10 border border-emerald-200/90 dark:border-emerald-500/30 p-3 flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <span className="block text-xs font-extrabold text-emerald-900 dark:text-emerald-200">
+                      <div className="rounded-xl bg-emerald-50/50 dark:bg-emerald-500/10 border border-emerald-200/90 dark:border-emerald-500/30 p-3 flex flex-col gap-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-extrabold text-emerald-900 dark:text-emerald-200">
                             En Exposición
                           </span>
-                          <span className="block text-[10px] text-emerald-700/80 dark:text-emerald-300/80">
+                          <span className="text-[10px] font-bold text-emerald-700/80 dark:text-emerald-300/80">
                             Resta de bodega
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-1 bg-white dark:bg-zinc-900 p-1 rounded-xl border border-emerald-200 dark:border-emerald-500/30 shadow-2xs">
+                        <div className="w-full flex items-center justify-between bg-white dark:bg-zinc-900 p-1.5 rounded-xl border border-emerald-200 dark:border-emerald-500/30 shadow-2xs">
                           <button
                             type="button"
                             onClick={() => stepModalExpo(-1)}
                             disabled={parsedModalExpo <= 0}
-                            className="w-7 h-7 rounded-lg hover:bg-emerald-50 dark:hover:bg-zinc-800 text-emerald-700 dark:text-emerald-300 disabled:opacity-35 flex items-center justify-center cursor-pointer"
+                            className="w-8 h-8 rounded-lg bg-emerald-50/70 dark:bg-zinc-800 hover:bg-emerald-100/80 dark:hover:bg-zinc-700 text-emerald-700 dark:text-emerald-300 disabled:opacity-35 flex items-center justify-center cursor-pointer"
                           >
-                            <Minus size={13} />
+                            <Minus size={14} />
                           </button>
                           <input
                             type="text"
@@ -1901,15 +1998,15 @@ export default function StockMaterialesScreen() {
                             onChange={(e) =>
                               setFormEnExposicion(e.target.value.replace(/[^\d]/g, ""))
                             }
-                            className="w-10 text-center bg-transparent text-xs font-black text-emerald-800 dark:text-emerald-200 tabular-nums focus:outline-none"
+                            className="w-16 text-center bg-transparent text-sm font-black text-emerald-800 dark:text-emerald-200 tabular-nums focus:outline-none"
                           />
                           <button
                             type="button"
                             onClick={() => stepModalExpo(1)}
                             disabled={parsedModalExpo >= parsedModalTotal}
-                            className="w-7 h-7 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-35 flex items-center justify-center cursor-pointer"
+                            className="w-8 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-35 flex items-center justify-center cursor-pointer"
                           >
-                            <Plus size={13} />
+                            <Plus size={14} />
                           </button>
                         </div>
                       </div>
@@ -2231,6 +2328,47 @@ export default function StockMaterialesScreen() {
                   </span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Bottom Bar to Confirm Unsaved Stock Modifications */}
+      {dirtyItems.length > 0 && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-24px)] max-w-lg animate-pop-in">
+          <div className="rounded-2xl bg-slate-900 dark:bg-zinc-900 border border-slate-700 dark:border-zinc-700 px-4 py-3 shadow-2xl flex items-center justify-between gap-3 text-white">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-extrabold truncate">
+                  {dirtyItems.length === 1
+                    ? "1 material con cambios sin guardar"
+                    : `${dirtyItems.length} materiales con cambios sin guardar`}
+                </p>
+                <p className="text-[10px] text-slate-300 truncate">
+                  Confirmá para actualizar el stock de bodega y exposición
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                disabled={savingBatch}
+                onClick={handleDiscardAllChanges}
+                className="px-3 py-1.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-[11px] font-bold text-slate-300 cursor-pointer"
+              >
+                Descartar
+              </button>
+              <button
+                type="button"
+                disabled={savingBatch}
+                onClick={handleSaveAllDirtyItems}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-700 hover:to-rose-600 disabled:opacity-50 text-white text-xs font-extrabold shadow-sm cursor-pointer"
+              >
+                <Save size={13} />
+                <span>{savingBatch ? "Guardando…" : "Guardar cambios"}</span>
+              </button>
             </div>
           </div>
         </div>
