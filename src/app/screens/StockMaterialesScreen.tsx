@@ -24,6 +24,8 @@ import {
   MapPin,
   Tag,
   CheckCircle2,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import {
   collection,
@@ -196,10 +198,27 @@ export default function StockMaterialesScreen() {
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // Filters
+  // Filters & View Mode
   const [selectedCategory, setSelectedCategory] = useState<"ALL" | MaterialCategory>("ALL");
   const [stockFilter, setStockFilter] = useState<"ALL" | "EXPOSICION" | "BODEGA" | "SIN_STOCK">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
+    try {
+      const saved = window.localStorage.getItem("stock_materiales_view_mode");
+      return saved === "list" ? "list" : "grid";
+    } catch {
+      return "grid";
+    }
+  });
+
+  const handleChangeViewMode = (mode: "grid" | "list") => {
+    setViewMode(mode);
+    try {
+      window.localStorage.setItem("stock_materiales_view_mode", mode);
+    } catch {
+      // ignore
+    }
+  };
 
   // Create / Edit Modal state
   const [showModal, setShowModal] = useState(false);
@@ -934,27 +953,59 @@ export default function StockMaterialesScreen() {
             })}
           </div>
 
-          <div className="relative w-full md:w-64">
-            <Search
-              size={13}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-            />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar película, póster, standee…"
-              className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-medium text-slate-800 dark:text-zinc-200 focus:bg-white dark:focus:bg-zinc-900 focus:outline-none"
-            />
-            {searchQuery && (
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <div className="relative flex-1 md:w-64">
+              <Search
+                size={13}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar película, póster, standee…"
+                className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-medium text-slate-800 dark:text-zinc-200 focus:bg-white dark:focus:bg-zinc-900 focus:outline-none"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            {/* View Mode Toggle: Tarjetas vs Lista Compacta */}
+            <div className="inline-flex items-center bg-slate-100 dark:bg-zinc-950 p-1 rounded-xl border border-slate-200 dark:border-zinc-800 shrink-0">
               <button
                 type="button"
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                onClick={() => handleChangeViewMode("grid")}
+                title="Vista en tarjetas"
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                  viewMode === "grid"
+                    ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-2xs"
+                    : "text-slate-500 dark:text-zinc-400 hover:text-slate-800"
+                }`}
               >
-                <X size={12} />
+                <LayoutGrid size={13} />
+                <span className="hidden sm:inline">Tarjetas</span>
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => handleChangeViewMode("list")}
+                title="Vista en lista compacta"
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                  viewMode === "list"
+                    ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-2xs"
+                    : "text-slate-500 dark:text-zinc-400 hover:text-slate-800"
+                }`}
+              >
+                <List size={13} />
+                <span className="hidden sm:inline">Lista</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -988,6 +1039,156 @@ export default function StockMaterialesScreen() {
             <Plus size={14} />
             Cargar Primer Material
           </button>
+        </div>
+      ) : viewMode === "list" ? (
+        /* High-Density Compact List View */
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/90 dark:border-zinc-800 shadow-xs overflow-hidden divide-y divide-slate-100 dark:divide-zinc-800/80">
+          {filteredItems.map((item, idx) => {
+            const meta = CATEGORY_META[item.categoria] || CATEGORY_META.poster;
+            const total = item.enBodega + item.enExposicion;
+            const isUpdating = updatingId === item.id;
+
+            return (
+              <div
+                key={item.id}
+                style={{ animationDelay: `${Math.min(idx * 15, 180)}ms` }}
+                className="animate-card-in px-3 sm:px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-slate-50/80 dark:hover:bg-zinc-950/50 transition-colors"
+              >
+                {/* Left: Mini Thumbnail + Category Pill + Title & Notes */}
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-9 h-12 rounded-lg bg-slate-100 dark:bg-zinc-950 border border-slate-200/80 dark:border-zinc-800 overflow-hidden shrink-0 flex items-center justify-center">
+                    {item.posterUrl ? (
+                      <img
+                        src={item.posterUrl}
+                        alt={item.titulo}
+                        loading="lazy"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className={`${meta.badgeText} opacity-80`}>
+                        {renderCategoryIcon(item.categoria, 16)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wide border ${meta.badgeBg} ${meta.badgeText} ${meta.badgeBorder}`}
+                      >
+                        {renderCategoryIcon(item.categoria, 9)}
+                        <span>{meta.label}</span>
+                      </span>
+                      <h4
+                        title={item.titulo}
+                        className="text-xs font-extrabold text-slate-900 dark:text-zinc-100 truncate"
+                      >
+                        {item.titulo}
+                      </h4>
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 tabular-nums">
+                        ({total} u. tot.)
+                      </span>
+                    </div>
+                    {item.notas ? (
+                      <p
+                        title={item.notas}
+                        className="text-[11px] text-slate-500 dark:text-zinc-400 truncate mt-0.5"
+                      >
+                        {item.notas}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* Right: Inline Bodega & Exposición Controls + Quick Actions */}
+                <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 shrink-0">
+                  {/* Bodega Inline Pill */}
+                  <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-xl bg-amber-50/70 dark:bg-amber-500/10 border border-amber-200/80 dark:border-amber-500/25">
+                    <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                      Bodega
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isUpdating || item.enBodega <= 0}
+                      onClick={() => handleAdjustBodega(item, -1)}
+                      title="Restar 1 de bodega"
+                      className="w-5 h-5 rounded-md bg-white dark:bg-zinc-900 border border-amber-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 hover:bg-amber-100/50 disabled:opacity-35 flex items-center justify-center cursor-pointer"
+                    >
+                      <Minus size={10} />
+                    </button>
+                    <span className="min-w-[20px] text-center text-xs font-black text-amber-900 dark:text-amber-200 tabular-nums">
+                      {item.enBodega}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isUpdating}
+                      onClick={() => handleAdjustBodega(item, 1)}
+                      title="Sumar 1 a bodega"
+                      className="w-5 h-5 rounded-md bg-white dark:bg-zinc-900 border border-amber-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 hover:bg-amber-100/50 disabled:opacity-35 flex items-center justify-center cursor-pointer"
+                    >
+                      <Plus size={10} />
+                    </button>
+                  </div>
+
+                  {/* Exposición Inline Pill */}
+                  <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-xl bg-emerald-50/70 dark:bg-emerald-500/10 border border-emerald-200/80 dark:border-emerald-500/25">
+                    <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300">
+                      Expo
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isUpdating || item.enExposicion <= 0}
+                      onClick={() => handleAdjustExposicion(item, -1)}
+                      title="Retirar 1 de exposición (vuelve a bodega)"
+                      className="w-5 h-5 rounded-md bg-white dark:bg-zinc-900 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/50 disabled:opacity-35 flex items-center justify-center cursor-pointer"
+                    >
+                      <Minus size={10} />
+                    </button>
+                    <span className="min-w-[20px] text-center text-xs font-black text-emerald-900 dark:text-emerald-200 tabular-nums">
+                      {item.enExposicion}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isUpdating || item.enBodega <= 0}
+                      onClick={() => handleAdjustExposicion(item, 1)}
+                      title="Poner 1 en exposición (se resta de bodega)"
+                      className="w-5 h-5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-35 flex items-center justify-center cursor-pointer"
+                    >
+                      <Plus size={10} />
+                    </button>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenExpoModal(item)}
+                      title="Mover entre Bodega y Exposición"
+                      className="w-7 h-7 rounded-lg border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 hover:bg-slate-100 dark:hover:bg-zinc-800 text-rose-500 flex items-center justify-center transition-colors cursor-pointer"
+                    >
+                      <ArrowRightLeft size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEdit(item)}
+                      title="Editar material"
+                      className="w-7 h-7 rounded-lg border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-300 flex items-center justify-center transition-colors cursor-pointer"
+                    >
+                      <Edit3 size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTarget(item)}
+                      title="Eliminar material"
+                      className="w-7 h-7 rounded-lg border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
