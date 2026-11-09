@@ -9,7 +9,6 @@ import {
   Search,
   X,
   Check,
-  Image as ImageIcon,
   ImageOff,
   Film,
   Sparkles,
@@ -19,10 +18,12 @@ import {
   Edit3,
   Minus,
   ArrowRightLeft,
-  Layers,
   Frame,
   UserSquare2,
   RefreshCw,
+  MapPin,
+  Tag,
+  CheckCircle2,
 } from "lucide-react";
 import {
   collection,
@@ -66,34 +67,42 @@ const CATEGORY_META: Record<
   {
     label: string;
     pluralLabel: string;
+    description: string;
     badgeBg: string;
     badgeText: string;
     badgeBorder: string;
+    activeRing: string;
     accentColor: string;
   }
 > = {
   poster: {
     label: "Póster",
     pluralLabel: "Pósters",
+    description: "Afiches y marquesinas",
     badgeBg: "bg-blue-50 dark:bg-blue-500/15",
     badgeText: "text-blue-700 dark:text-blue-300",
     badgeBorder: "border-blue-200 dark:border-blue-500/30",
+    activeRing: "ring-blue-500/25 border-blue-500",
     accentColor: "#3b82f6",
   },
   banner: {
     label: "Banner",
     pluralLabel: "Banners",
+    description: "Lonas y portabanners",
     badgeBg: "bg-emerald-50 dark:bg-emerald-500/15",
     badgeText: "text-emerald-700 dark:text-emerald-300",
     badgeBorder: "border-emerald-200 dark:border-emerald-500/30",
+    activeRing: "ring-emerald-500/25 border-emerald-500",
     accentColor: "#10b981",
   },
   standee: {
     label: "Standee",
     pluralLabel: "Standees",
+    description: "Corpóreos de lobby",
     badgeBg: "bg-violet-50 dark:bg-violet-500/15",
     badgeText: "text-violet-700 dark:text-violet-300",
     badgeBorder: "border-violet-200 dark:border-violet-500/30",
+    activeRing: "ring-violet-500/25 border-violet-500",
     accentColor: "#8b5cf6",
   },
 };
@@ -208,6 +217,7 @@ export default function StockMaterialesScreen() {
   const [tmdbQuery, setTmdbQuery] = useState("");
   const [tmdbResults, setTmdbResults] = useState<TmdbResult[]>([]);
   const [searchingTmdb, setSearchingTmdb] = useState(false);
+  const [hasSearchedTmdb, setHasSearchedTmdb] = useState(false);
   const [externalUrl, setExternalUrl] = useState("");
   const [selectedFile, setSelectedFile] = useState<{
     name: string;
@@ -333,6 +343,7 @@ export default function StockMaterialesScreen() {
     setSelectedPosterUrl("");
     setTmdbQuery("");
     setTmdbResults([]);
+    setHasSearchedTmdb(false);
     setExternalUrl("");
     setSelectedFile(null);
     setShowModal(true);
@@ -354,6 +365,7 @@ export default function StockMaterialesScreen() {
     setSelectedPosterUrl(item.posterUrl || "");
     setTmdbQuery(item.titulo);
     setTmdbResults([]);
+    setHasSearchedTmdb(false);
     setExternalUrl(source === "url" ? item.posterUrl : "");
     setSelectedFile(
       source === "upload" && item.posterUrl
@@ -364,12 +376,13 @@ export default function StockMaterialesScreen() {
   };
 
   // Search TMDB + Local Custom Posters (same workflow as Banners y Marquesinas)
-  const handleSearchTmdb = async () => {
-    const queryText = (tmdbQuery.trim() || formTitulo.trim());
+  const handleSearchTmdb = async (overrideQuery?: string) => {
+    const queryText = (overrideQuery ?? (tmdbQuery.trim() || formTitulo.trim())).trim();
     if (!queryText) return;
 
     try {
       setSearchingTmdb(true);
+      setHasSearchedTmdb(true);
       setTmdbResults([]);
 
       // 1. Custom posters from local database
@@ -477,6 +490,19 @@ export default function StockMaterialesScreen() {
   const parsedModalTotal = Math.max(0, parseInt(formStockTotal || "0", 10) || 0);
   const parsedModalExpo = Math.max(0, parseInt(formEnExposicion || "0", 10) || 0);
   const computedModalBodega = Math.max(0, parsedModalTotal - parsedModalExpo);
+
+  const stepModalTotal = (delta: number) => {
+    const nextTotal = Math.max(0, parsedModalTotal + delta);
+    setFormStockTotal(String(nextTotal));
+    if (parsedModalExpo > nextTotal) {
+      setFormEnExposicion(String(nextTotal));
+    }
+  };
+
+  const stepModalExpo = (delta: number) => {
+    const nextExpo = Math.max(0, Math.min(parsedModalTotal, parsedModalExpo + delta));
+    setFormEnExposicion(String(nextExpo));
+  };
 
   const modalPreviewUrl = useMemo(() => {
     if (imageMode === "none") return "";
@@ -594,7 +620,6 @@ export default function StockMaterialesScreen() {
       updatedBy: userEmail,
     };
 
-    // Optimistic update
     setItems((prev) => prev.map((it) => (it.id === item.id ? updatedItem : it)));
     setUpdatingId(item.id);
     try {
@@ -764,7 +789,7 @@ export default function StockMaterialesScreen() {
                 <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-zinc-100 tracking-tight">
                   Control de Stock de Materiales
                 </h2>
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700 tabular-nums">
                   {stats.totalItems} títulos • {stats.totalUnidades} u. totales
                 </span>
               </div>
@@ -806,7 +831,7 @@ export default function StockMaterialesScreen() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 block">
                 En Bodega
               </span>
-              <span className="text-base font-black text-amber-900 dark:text-amber-200">
+              <span className="text-base font-black text-amber-900 dark:text-amber-200 tabular-nums">
                 {stats.totalBodega}
               </span>
             </div>
@@ -818,7 +843,7 @@ export default function StockMaterialesScreen() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 block">
                 En Exposición
               </span>
-              <span className="text-base font-black text-emerald-900 dark:text-emerald-200">
+              <span className="text-base font-black text-emerald-900 dark:text-emerald-200 tabular-nums">
                 {stats.totalExposicion}
               </span>
             </div>
@@ -837,7 +862,7 @@ export default function StockMaterialesScreen() {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 block">
                     {meta.pluralLabel} ({cStats.items})
                   </span>
-                  <div className="flex items-center gap-2 text-xs font-extrabold text-slate-800 dark:text-zinc-200">
+                  <div className="flex items-center gap-2 text-xs font-extrabold text-slate-800 dark:text-zinc-200 tabular-nums">
                     <span title="En Bodega">{cStats.bodega} bod.</span>
                     <span className="text-slate-300 dark:text-zinc-700">•</span>
                     <span className="text-emerald-600 dark:text-emerald-400" title="En Exposición">
@@ -855,7 +880,6 @@ export default function StockMaterialesScreen() {
 
         {/* Filter & Search Bar */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 pt-1">
-          {/* Category Pills */}
           <div className="flex flex-wrap items-center gap-1.5">
             {(
               [
@@ -885,7 +909,6 @@ export default function StockMaterialesScreen() {
 
             <div className="h-4 w-px bg-slate-200 dark:bg-zinc-800 mx-1 hidden sm:block" />
 
-            {/* Location / State Sub-filter */}
             {(
               [
                 { key: "ALL", label: "Cualquier estado" },
@@ -911,7 +934,6 @@ export default function StockMaterialesScreen() {
             })}
           </div>
 
-          {/* Search Box */}
           <div className="relative w-full md:w-64">
             <Search
               size={13}
@@ -944,7 +966,7 @@ export default function StockMaterialesScreen() {
           <span className="text-xs font-semibold">Cargando stock de materiales…</span>
         </div>
       ) : filteredItems.length === 0 ? (
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-dashed border-slate-300 dark:border-zinc-800 p-12 text-center max-w-md mx-auto my-6">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-dashed border-slate-300 dark:border-zinc-800 p-12 text-center max-w-md mx-auto my-6 animate-card-in">
           <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-3">
             <Package size={24} />
           </div>
@@ -969,7 +991,7 @@ export default function StockMaterialesScreen() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
-          {filteredItems.map((item) => {
+          {filteredItems.map((item, idx) => {
             const meta = CATEGORY_META[item.categoria] || CATEGORY_META.poster;
             const total = item.enBodega + item.enExposicion;
             const isUpdating = updatingId === item.id;
@@ -977,7 +999,8 @@ export default function StockMaterialesScreen() {
             return (
               <div
                 key={item.id}
-                className="group bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/90 dark:border-zinc-800 shadow-xs overflow-hidden flex flex-col justify-between transition-all hover:shadow-md"
+                style={{ animationDelay: `${Math.min(idx * 25, 250)}ms` }}
+                className="animate-card-in hover-lift group bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200/90 dark:border-zinc-800 shadow-xs overflow-hidden flex flex-col justify-between"
               >
                 {/* Top Poster / Placeholder Area */}
                 <div className="relative aspect-[2/2.6] w-full bg-slate-100 dark:bg-zinc-950 overflow-hidden">
@@ -1035,7 +1058,7 @@ export default function StockMaterialesScreen() {
 
                   {/* Active Exposition Floating Badge */}
                   {item.enExposicion > 0 && (
-                    <div className="absolute bottom-2 left-2 right-2 px-2.5 py-1 rounded-xl bg-emerald-600/95 text-white text-[11px] font-extrabold flex items-center justify-between shadow-sm backdrop-blur-xs">
+                    <div className="absolute bottom-2 left-2 right-2 px-2.5 py-1 rounded-xl bg-emerald-600/95 text-white text-[11px] font-extrabold flex items-center justify-between shadow-sm backdrop-blur-xs tabular-nums">
                       <span className="inline-flex items-center gap-1">
                         <Eye size={12} />
                         En Exposición
@@ -1062,7 +1085,7 @@ export default function StockMaterialesScreen() {
                         {item.notas}
                       </p>
                     ) : (
-                      <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">
+                      <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 tabular-nums">
                         Stock total: <strong className="text-slate-600 dark:text-zinc-300">{total} u.</strong>
                       </p>
                     )}
@@ -1089,7 +1112,7 @@ export default function StockMaterialesScreen() {
                         >
                           <Minus size={11} />
                         </button>
-                        <span className="min-w-[26px] text-center text-xs font-black text-amber-700 dark:text-amber-300">
+                        <span className="min-w-[26px] text-center text-xs font-black text-amber-700 dark:text-amber-300 tabular-nums">
                           {item.enBodega}
                         </span>
                         <button
@@ -1126,7 +1149,7 @@ export default function StockMaterialesScreen() {
                         >
                           <Minus size={11} />
                         </button>
-                        <span className="min-w-[26px] text-center text-xs font-black text-emerald-700 dark:text-emerald-300">
+                        <span className="min-w-[26px] text-center text-xs font-black text-emerald-700 dark:text-emerald-300 tabular-nums">
                           {item.enExposicion}
                         </span>
                         <button
@@ -1161,101 +1184,146 @@ export default function StockMaterialesScreen() {
       {/* Modal: Mover entre Bodega y Exposición (Asignación Rápida) */}
       {expoModalItem && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/55 backdrop-blur-xs animate-backdrop-in"
           onClick={() => setExpoModalItem(null)}
         >
           <div
-            className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl overflow-hidden"
+            className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-2xl border border-slate-200/90 dark:border-zinc-800 shadow-2xl overflow-hidden animate-modal-in"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ArrowRightLeft size={16} className="text-emerald-400" />
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200/70 dark:border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                  <ArrowRightLeft size={17} />
+                </div>
                 <div>
-                  <h3 className="text-sm font-extrabold">
-                    Control de Exposición y Bodega
+                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-zinc-100">
+                    Distribución de Stock
                   </h3>
-                  <p className="text-[11px] text-slate-300 truncate max-w-[260px]">
-                    {expoModalItem.titulo} ({CATEGORY_META[expoModalItem.categoria].label})
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 truncate max-w-[250px]">
+                    {expoModalItem.titulo} • {CATEGORY_META[expoModalItem.categoria].label}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setExpoModalItem(null)}
-                className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 cursor-pointer"
+                className="w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-600 flex items-center justify-center cursor-pointer"
               >
                 <X size={15} />
               </button>
             </div>
 
             <div className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
-                    Stock Total del Material
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={bodegaTotalInputVal}
-                    onChange={(e) => setBodegaTotalInputVal(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-sm font-extrabold text-slate-900 dark:text-zinc-100 focus:bg-white focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-emerald-700 dark:text-emerald-400 mb-1">
-                    Unidades en Exposición
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={Math.max(0, parseInt(bodegaTotalInputVal || "0", 10) || 0)}
-                    value={expoInputVal}
-                    onChange={(e) => setExpoInputVal(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-700 text-sm font-extrabold text-emerald-900 dark:text-emerald-200 focus:bg-white focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Live preview calculation */}
               {(() => {
                 const tot = Math.max(0, parseInt(bodegaTotalInputVal || "0", 10) || 0);
                 const exp = Math.max(0, parseInt(expoInputVal || "0", 10) || 0);
                 const bod = Math.max(0, tot - exp);
+                const expPercent = tot > 0 ? Math.min(100, Math.round((exp / tot) * 100)) : 0;
+
                 return (
-                  <div className="rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 p-3">
-                    <div className="text-[11px] font-bold text-slate-500 dark:text-zinc-400 mb-2">
-                      Resultado del descuento automático:
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="p-2 rounded-lg bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
-                        <span className="block text-[10px] font-bold text-slate-400 uppercase">
-                          Total
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Total Stepper Card */}
+                      <div className="rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200/90 dark:border-zinc-800 p-3">
+                        <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-2">
+                          Stock Total
                         </span>
-                        <span className="text-sm font-black text-slate-800 dark:text-zinc-100">
-                          {tot} u.
-                        </span>
+                        <div className="flex items-center justify-between gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = Math.max(0, tot - 1);
+                              setBodegaTotalInputVal(String(next));
+                              if (exp > next) setExpoInputVal(String(next));
+                            }}
+                            className="w-8 h-8 rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 flex items-center justify-center text-slate-700 dark:text-zinc-200 hover:bg-slate-100 cursor-pointer"
+                          >
+                            <Minus size={13} />
+                          </button>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={bodegaTotalInputVal}
+                            onChange={(e) =>
+                              setBodegaTotalInputVal(e.target.value.replace(/[^\d]/g, ""))
+                            }
+                            className="w-14 text-center bg-transparent text-base font-black text-slate-900 dark:text-zinc-100 tabular-nums focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setBodegaTotalInputVal(String(tot + 1))}
+                            className="w-8 h-8 rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 flex items-center justify-center text-slate-700 dark:text-zinc-200 hover:bg-slate-100 cursor-pointer"
+                          >
+                            <Plus size={13} />
+                          </button>
+                        </div>
                       </div>
-                      <div className="p-2 rounded-lg bg-amber-50/80 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30">
-                        <span className="block text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase">
-                          En Bodega
-                        </span>
-                        <span className="text-sm font-black text-amber-900 dark:text-amber-200">
-                          {bod} u.
-                        </span>
-                      </div>
-                      <div className="p-2 rounded-lg bg-emerald-50/80 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30">
-                        <span className="block text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase">
+
+                      {/* Exposición Stepper Card */}
+                      <div className="rounded-xl bg-emerald-50/50 dark:bg-emerald-500/10 border border-emerald-200/90 dark:border-emerald-500/30 p-3">
+                        <span className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 mb-2">
                           En Exposición
                         </span>
-                        <span className="text-sm font-black text-emerald-900 dark:text-emerald-200">
-                          {exp} u.
-                        </span>
+                        <div className="flex items-center justify-between gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setExpoInputVal(String(Math.max(0, exp - 1)))}
+                            className="w-8 h-8 rounded-lg bg-white dark:bg-zinc-900 border border-emerald-200 dark:border-emerald-500/30 flex items-center justify-center text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 cursor-pointer"
+                          >
+                            <Minus size={13} />
+                          </button>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={expoInputVal}
+                            onChange={(e) =>
+                              setExpoInputVal(e.target.value.replace(/[^\d]/g, ""))
+                            }
+                            className="w-14 text-center bg-transparent text-base font-black text-emerald-800 dark:text-emerald-200 tabular-nums focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpoInputVal(String(Math.min(tot, exp + 1)))
+                            }
+                            className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center hover:bg-emerald-700 cursor-pointer"
+                          >
+                            <Plus size={13} />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
+
+                    {/* Visual Distribution Split */}
+                    <div className="rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200/80 dark:border-zinc-800 p-3.5 space-y-2.5">
+                      <div className="flex items-center justify-between text-xs font-bold tabular-nums">
+                        <span className="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-300">
+                          <Archive size={13} />
+                          En Bodega: <strong>{bod} u.</strong>
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
+                          <Eye size={13} />
+                          En Exposición: <strong>{exp} u.</strong>
+                        </span>
+                      </div>
+
+                      <div className="w-full h-2 rounded-full bg-amber-200/70 dark:bg-amber-500/20 overflow-hidden flex">
+                        <div
+                          style={{ width: `${100 - expPercent}%` }}
+                          className="h-full bg-amber-500 transition-all duration-200"
+                        />
+                        <div
+                          style={{ width: `${expPercent}%` }}
+                          className="h-full bg-emerald-500 transition-all duration-200"
+                        />
+                      </div>
+
+                      <p className="text-[11px] text-slate-500 dark:text-zinc-400 text-center">
+                        Las <strong>{exp}</strong> unidades en exposición se descuentan automáticamente de las <strong>{tot}</strong> totales.
+                      </p>
+                    </div>
+                  </>
                 );
               })()}
 
@@ -1276,10 +1344,10 @@ export default function StockMaterialesScreen() {
                 <button
                   type="button"
                   onClick={handleSaveExpoModal}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 dark:bg-zinc-100 hover:bg-rose-600 dark:hover:bg-rose-500 text-white dark:text-zinc-900 dark:hover:text-white text-xs font-bold shadow-sm transition-colors cursor-pointer"
                 >
                   <Check size={14} />
-                  <span>Guardar Stock</span>
+                  <span>Aplicar Cambios</span>
                 </button>
               </div>
             </div>
@@ -1287,44 +1355,180 @@ export default function StockMaterialesScreen() {
         </div>
       )}
 
-      {/* Modal: Crear / Editar Material */}
+      {/* Modal: Crear / Editar Material — Redesigned Studio Layout */}
       {showModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/55 backdrop-blur-xs overflow-y-auto animate-backdrop-in"
           onClick={() => setShowModal(false)}
         >
           <div
-            className="bg-white dark:bg-zinc-900 w-full max-w-2xl rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col"
+            className="bg-white dark:bg-zinc-900 w-full max-w-3xl rounded-2xl border border-slate-200/90 dark:border-zinc-800 shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col animate-modal-in"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
-            <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <Sparkles size={16} className="text-rose-400" />
-                <h3 className="text-sm font-extrabold">
-                  {editingItem ? "Editar Material de Stock" : "Nuevo Material de Stock"}
-                </h3>
+            {/* Refined Minimalist Corporate Header */}
+            <div className="px-6 py-4 border-b border-slate-200/80 dark:border-zinc-800 flex items-center justify-between shrink-0 bg-white dark:bg-zinc-900">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-50 dark:bg-rose-500/15 border border-rose-200/70 dark:border-rose-500/30 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
+                  <Sparkles size={17} strokeWidth={2.2} />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-zinc-100 tracking-tight">
+                    {editingItem ? "Editar Material de Stock" : "Registrar Nuevo Material"}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                    Configurá el tipo de material, las unidades en bodega/exposición y su imagen de referencia
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
-                className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 cursor-pointer"
+                className="w-8 h-8 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-700 dark:hover:text-zinc-200 flex items-center justify-center transition-colors cursor-pointer"
               >
-                <X size={15} />
+                <X size={16} />
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div className="p-5 overflow-y-auto space-y-4 flex-1">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-                {/* Left Column: Form Details */}
-                <div className="md:col-span-7 space-y-3.5">
-                  {/* Category Selector */}
+            {/* Modal Body: Two-Column Studio Layout */}
+            <div className="p-5 sm:p-6 overflow-y-auto flex-1">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+                {/* Left Column: Live Studio Preview Card (5 cols) */}
+                <div className="md:col-span-5 rounded-2xl bg-slate-50/80 dark:bg-zinc-950/70 border border-slate-200/80 dark:border-zinc-800/90 p-4 flex flex-col items-center justify-between gap-4">
+                  <div className="w-full flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
+                      Vista Previa en Vivo
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase border ${CATEGORY_META[formCategory].badgeBg} ${CATEGORY_META[formCategory].badgeText} ${CATEGORY_META[formCategory].badgeBorder}`}
+                    >
+                      {renderCategoryIcon(formCategory, 10)}
+                      {CATEGORY_META[formCategory].label}
+                    </span>
+                  </div>
+
+                  {/* Poster Card Mockup */}
+                  <div className="w-48 sm:w-52 aspect-[2/2.85] rounded-2xl border border-slate-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-md overflow-hidden relative flex flex-col justify-between">
+                    {modalPreviewUrl ? (
+                      <>
+                        <img
+                          src={modalPreviewUrl}
+                          alt="Vista previa"
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPosterUrl("");
+                            setExternalUrl("");
+                            setSelectedFile(null);
+                            setImageMode("none");
+                          }}
+                          title="Quitar imagen y dejar sin imagen"
+                          className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-slate-950/80 hover:bg-rose-600 text-white text-[10px] font-bold flex items-center gap-1 backdrop-blur-xs shadow-sm transition-colors cursor-pointer"
+                        >
+                          <X size={11} />
+                          Quitar
+                        </button>
+                      </>
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center p-5 text-center bg-gradient-to-b from-white to-slate-50 dark:from-zinc-900 dark:to-zinc-950">
+                        <div
+                          className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 border shadow-2xs ${CATEGORY_META[formCategory].badgeBg} ${CATEGORY_META[formCategory].badgeText} ${CATEGORY_META[formCategory].badgeBorder}`}
+                        >
+                          {renderCategoryIcon(formCategory, 26)}
+                        </div>
+                        <span className="text-xs font-extrabold text-slate-800 dark:text-zinc-200 line-clamp-2 leading-snug">
+                          {formTitulo.trim() || "Nombre de la película"}
+                        </span>
+                        {formNotas.trim() && (
+                          <span className="text-[10px] text-slate-400 dark:text-zinc-500 line-clamp-1 mt-0.5">
+                            {formNotas.trim()}
+                          </span>
+                        )}
+                        <span className="mt-3 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-zinc-800 text-[10px] font-semibold text-slate-500 dark:text-zinc-400">
+                          <ImageOff size={10} />
+                          {imageMode === "none" ? "Sin imagen" : "Elegí o buscá una imagen"}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Floating Bottom Info Overlay */}
+                    <div className="absolute bottom-2.5 left-2.5 right-2.5 rounded-xl bg-slate-950/88 text-white p-2.5 text-[11px] backdrop-blur-md shadow-lg border border-white/10">
+                      <div className="font-extrabold truncate leading-tight">
+                        {formTitulo.trim() || "Sin título asignado"}
+                      </div>
+                      <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-white/10 text-[10px] tabular-nums">
+                        <span className="text-amber-300 font-bold">
+                          Bodega: {computedModalBodega} u.
+                        </span>
+                        <span className="text-emerald-400 font-extrabold">
+                          Expo: {parsedModalExpo} u.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Live Distribution Bar inside Studio Column */}
+                  <div className="w-full rounded-xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 p-3 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-bold tabular-nums">
+                      <span className="text-slate-500 dark:text-zinc-400">
+                        Total:{" "}
+                        <strong className="text-slate-900 dark:text-zinc-100">
+                          {parsedModalTotal} u.
+                        </strong>
+                      </span>
+                      <span className="text-amber-700 dark:text-amber-300">
+                        Bod: <strong>{computedModalBodega}</strong>
+                      </span>
+                      <span className="text-emerald-700 dark:text-emerald-400">
+                        Exp: <strong>{parsedModalExpo}</strong>
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-amber-200/70 dark:bg-amber-500/20 overflow-hidden flex">
+                      <div
+                        style={{
+                          width: `${
+                            parsedModalTotal > 0
+                              ? Math.max(
+                                  0,
+                                  Math.min(
+                                    100,
+                                    Math.round((computedModalBodega / parsedModalTotal) * 100)
+                                  )
+                                )
+                              : 100
+                          }%`,
+                        }}
+                        className="h-full bg-amber-500 transition-all duration-200"
+                      />
+                      <div
+                        style={{
+                          width: `${
+                            parsedModalTotal > 0
+                              ? Math.max(
+                                  0,
+                                  Math.min(
+                                    100,
+                                    Math.round((parsedModalExpo / parsedModalTotal) * 100)
+                                  )
+                                )
+                              : 0
+                          }%`,
+                        }}
+                        className="h-full bg-emerald-500 transition-all duration-200"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Form Sections (7 cols) */}
+                <div className="md:col-span-7 space-y-5">
+                  {/* 1. Category Cards */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
-                      Tipo de Material *
+                    <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-2">
+                      1. Categoría del Material
                     </label>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-2.5">
                       {(["poster", "banner", "standee"] as MaterialCategory[]).map((cat) => {
                         const meta = CATEGORY_META[cat];
                         const active = formCategory === cat;
@@ -1333,125 +1537,221 @@ export default function StockMaterialesScreen() {
                             key={cat}
                             type="button"
                             onClick={() => setFormCategory(cat)}
-                            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-xs font-extrabold transition-all cursor-pointer ${
+                            className={`relative flex flex-col items-start p-3 rounded-xl border text-left transition-all cursor-pointer ${
                               active
-                                ? `${meta.badgeBg} ${meta.badgeText} ${meta.badgeBorder} ring-2 ring-offset-1 ring-slate-900/10`
-                                : "bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-100"
+                                ? `${meta.badgeBg} ${meta.activeRing} ring-2`
+                                : "bg-slate-50/70 dark:bg-zinc-950 border-slate-200/90 dark:border-zinc-800 hover:bg-slate-100/70 dark:hover:bg-zinc-900"
                             }`}
                           >
-                            {renderCategoryIcon(cat, 14)}
-                            <span>{meta.label}</span>
+                            <div className="w-full flex items-center justify-between mb-1.5">
+                              <div
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                                  active
+                                    ? "bg-white dark:bg-zinc-900 shadow-2xs " + meta.badgeText
+                                    : "bg-slate-200/70 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                                }`}
+                              >
+                                {renderCategoryIcon(cat, 15)}
+                              </div>
+                              {active && (
+                                <CheckCircle2
+                                  size={14}
+                                  className={meta.badgeText}
+                                />
+                              )}
+                            </div>
+                            <span
+                              className={`text-xs font-extrabold ${
+                                active
+                                  ? meta.badgeText
+                                  : "text-slate-800 dark:text-zinc-200"
+                              }`}
+                            >
+                              {meta.label}
+                            </span>
+                            <span className="text-[10px] text-slate-500 dark:text-zinc-400 line-clamp-1 mt-0.5">
+                              {meta.description}
+                            </span>
                           </button>
                         );
                       })}
                     </div>
                   </div>
 
-                  {/* Title / Movie Input */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
-                      Película o Nombre del Material *
-                    </label>
-                    <input
-                      type="text"
-                      value={formTitulo}
-                      onChange={(e) => setFormTitulo(e.target.value)}
-                      placeholder="Ej: Spider-Man / Avengers / Standee Lobby"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-bold text-slate-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-900 focus:outline-none"
-                    />
+                  {/* 2. Identification Inputs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <div className="sm:col-span-7">
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1.5">
+                        Película o Título *
+                      </label>
+                      <div className="relative">
+                        <Tag
+                          size={14}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                        />
+                        <input
+                          type="text"
+                          value={formTitulo}
+                          onChange={(e) => setFormTitulo(e.target.value)}
+                          placeholder="Ej: Spider-Man: Brand New Day"
+                          className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-bold text-slate-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="sm:col-span-5">
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1.5">
+                        Ubicación / Notas
+                      </label>
+                      <div className="relative">
+                        <MapPin
+                          size={14}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                        />
+                        <input
+                          type="text"
+                          value={formNotas}
+                          onChange={(e) => setFormNotas(e.target.value)}
+                          placeholder="Ej: Hall / Caja 3"
+                          className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-medium text-slate-800 dark:text-zinc-200 focus:bg-white dark:focus:bg-zinc-900"
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Optional Notes */}
+                  {/* 3. Tactile Stock Steppers (Total vs Exposición) */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
-                      Ubicación / Notas (Opcional)
-                    </label>
-                    <input
-                      type="text"
-                      value={formNotas}
-                      onChange={(e) => setFormNotas(e.target.value)}
-                      placeholder="Ej: Marquesina Hall Principal / 2x3m / Caja 4"
-                      className="w-full px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-medium text-slate-800 dark:text-zinc-200 focus:bg-white dark:focus:bg-zinc-900 focus:outline-none"
-                    />
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                        2. Control de Stock y Exposición
+                      </label>
+                      <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500">
+                        Exposición descuenta de bodega
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Total Stock Stepper */}
+                      <div className="rounded-xl bg-slate-50/90 dark:bg-zinc-950 border border-slate-200/90 dark:border-zinc-800 p-3 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="block text-xs font-extrabold text-slate-800 dark:text-zinc-200">
+                            Stock Total
+                          </span>
+                          <span className="block text-[10px] text-slate-500 dark:text-zinc-400">
+                            En bodega:{" "}
+                            <strong className="text-amber-700 dark:text-amber-300 tabular-nums">
+                              {computedModalBodega} u.
+                            </strong>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 bg-white dark:bg-zinc-900 p-1 rounded-xl border border-slate-200/90 dark:border-zinc-800 shadow-2xs">
+                          <button
+                            type="button"
+                            onClick={() => stepModalTotal(-1)}
+                            disabled={parsedModalTotal <= 0}
+                            className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 disabled:opacity-35 flex items-center justify-center cursor-pointer"
+                          >
+                            <Minus size={13} />
+                          </button>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={formStockTotal}
+                            onChange={(e) =>
+                              setFormStockTotal(e.target.value.replace(/[^\d]/g, ""))
+                            }
+                            className="w-10 text-center bg-transparent text-xs font-black text-slate-900 dark:text-zinc-100 tabular-nums focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => stepModalTotal(1)}
+                            className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 flex items-center justify-center cursor-pointer"
+                          >
+                            <Plus size={13} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Exposición Stepper */}
+                      <div className="rounded-xl bg-emerald-50/50 dark:bg-emerald-500/10 border border-emerald-200/90 dark:border-emerald-500/30 p-3 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="block text-xs font-extrabold text-emerald-900 dark:text-emerald-200">
+                            En Exposición
+                          </span>
+                          <span className="block text-[10px] text-emerald-700/80 dark:text-emerald-300/80">
+                            Resta de bodega
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 bg-white dark:bg-zinc-900 p-1 rounded-xl border border-emerald-200 dark:border-emerald-500/30 shadow-2xs">
+                          <button
+                            type="button"
+                            onClick={() => stepModalExpo(-1)}
+                            disabled={parsedModalExpo <= 0}
+                            className="w-7 h-7 rounded-lg hover:bg-emerald-50 dark:hover:bg-zinc-800 text-emerald-700 dark:text-emerald-300 disabled:opacity-35 flex items-center justify-center cursor-pointer"
+                          >
+                            <Minus size={13} />
+                          </button>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={formEnExposicion}
+                            onChange={(e) =>
+                              setFormEnExposicion(e.target.value.replace(/[^\d]/g, ""))
+                            }
+                            className="w-10 text-center bg-transparent text-xs font-black text-emerald-800 dark:text-emerald-200 tabular-nums focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => stepModalExpo(1)}
+                            disabled={parsedModalExpo >= parsedModalTotal}
+                            className="w-7 h-7 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-35 flex items-center justify-center cursor-pointer"
+                          >
+                            <Plus size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Stock Quantities: Total & En Exposición */}
-                  <div className="rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 p-3 space-y-2.5">
+                  {/* 4. Image Source Selector (TMDB -> URL -> Sin Imagen -> Subir Archivo [LAST OPTION]) */}
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-extrabold text-slate-800 dark:text-zinc-200">
-                        Control de Unidades (Bodega y Exposición)
+                      <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                        3. Imagen del Material
+                      </label>
+                      <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500">
+                        Priorizá TMDB o URL para cuidar el servidor
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-600 dark:text-zinc-400 mb-1">
-                          Cantidad Total Recibida *
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          value={formStockTotal}
-                          onChange={(e) => setFormStockTotal(e.target.value)}
-                          className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-xs font-extrabold text-slate-900 dark:text-zinc-100"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-emerald-700 dark:text-emerald-400 mb-1">
-                          En Exposición (se restan de bodega)
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          max={parsedModalTotal}
-                          value={formEnExposicion}
-                          onChange={(e) => setFormEnExposicion(e.target.value)}
-                          className="w-full px-3 py-1.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-700 text-xs font-extrabold text-emerald-900 dark:text-emerald-200"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-200/70 dark:border-zinc-800">
-                      <span className="text-slate-500 dark:text-zinc-400">
-                        Quedan en <strong className="text-amber-700 dark:text-amber-300">Bodega: {computedModalBodega} u.</strong>
-                      </span>
-                      <span className="text-slate-500 dark:text-zinc-400">
-                        En <strong className="text-emerald-700 dark:text-emerald-400">Exposición: {parsedModalExpo} u.</strong>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Image Source Selector (TMDB -> URL -> Sin Imagen -> Subir Archivo [LAST OPTION]) */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1">
-                      Imagen del Material
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-slate-100 dark:bg-zinc-950 p-1 rounded-xl border border-slate-200 dark:border-zinc-800">
+                    {/* Clean Segmented Tabs */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-slate-100/90 dark:bg-zinc-950 p-1.5 rounded-xl border border-slate-200/80 dark:border-zinc-800">
                       <button
                         type="button"
                         onClick={() => setImageMode("tmdb")}
-                        className={`inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           imageMode === "tmdb"
                             ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
-                            : "text-slate-500 hover:text-slate-800"
+                            : "text-slate-600 dark:text-zinc-400 hover:text-slate-900"
                         }`}
                       >
-                        <Search size={11} />
-                        <span>1. TMDB</span>
+                        <Search size={13} className={imageMode === "tmdb" ? "text-rose-600" : ""} />
+                        <span>TMDB</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setImageMode("url")}
-                        className={`inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           imageMode === "url"
                             ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
-                            : "text-slate-500 hover:text-slate-800"
+                            : "text-slate-600 dark:text-zinc-400 hover:text-slate-900"
                         }`}
                       >
-                        <Link2 size={11} />
-                        <span>2. URL</span>
+                        <Link2 size={13} className={imageMode === "url" ? "text-rose-600" : ""} />
+                        <span>URL Web</span>
                       </button>
 
                       <button
@@ -1460,255 +1760,276 @@ export default function StockMaterialesScreen() {
                           setImageMode("none");
                           setSelectedPosterUrl("");
                         }}
-                        className={`inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           imageMode === "none"
                             ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 shadow-xs"
-                            : "text-slate-500 hover:text-slate-800"
+                            : "text-slate-600 dark:text-zinc-400 hover:text-slate-900"
                         }`}
                       >
-                        <ImageOff size={11} />
+                        <ImageOff size={13} />
                         <span>Sin Imagen</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setImageMode("upload")}
-                        className={`inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           imageMode === "upload"
                             ? "bg-amber-500 text-white shadow-xs"
-                            : "text-amber-700 dark:text-amber-400 hover:bg-amber-50/60"
+                            : "text-amber-700 dark:text-amber-400 hover:bg-amber-50/70 dark:hover:bg-amber-950/30"
                         }`}
                       >
-                        <Upload size={11} />
-                        <span>Subir (Últ. opción)</span>
+                        <Upload size={13} />
+                        <span>Subir Archivo</span>
                       </button>
                     </div>
-                  </div>
 
-                  {/* Option 1: TMDB Search */}
-                  {imageMode === "tmdb" && (
-                    <div className="space-y-2">
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400">
-                        Buscar póster oficial en TMDB o catálogo global (Recomendado):
-                      </label>
-                      <div className="flex gap-1.5">
-                        <input
-                          type="text"
-                          value={tmdbQuery}
-                          onChange={(e) => setTmdbQuery(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              handleSearchTmdb();
-                            }
-                          }}
-                          placeholder={
-                            formTitulo
-                              ? `Buscar "${formTitulo}" en TMDB…`
-                              : "Escribir nombre de la película…"
-                          }
-                          className="flex-1 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-medium text-slate-900 dark:text-zinc-100 focus:bg-white focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleSearchTmdb}
-                          disabled={searchingTmdb}
-                          className="px-3.5 py-1.5 rounded-xl bg-slate-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs font-bold hover:bg-rose-600 transition-colors cursor-pointer shrink-0"
-                        >
-                          {searchingTmdb ? "Buscando…" : "Buscar"}
-                        </button>
-                      </div>
-
-                      {tmdbResults.length > 0 && (
-                        <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 divide-y divide-slate-200/60 dark:divide-zinc-800">
-                          {tmdbResults.map((movie) => {
-                            const thumbUrl = buildPosterDisplayUrl(movie.poster_path);
-                            const isSelected = selectedPosterUrl === thumbUrl && !!thumbUrl;
-                            return (
-                              <button
-                                key={movie.id}
-                                type="button"
-                                onClick={() => handleSelectTmdbResult(movie)}
-                                className={`w-full p-2 flex items-center gap-2.5 text-left hover:bg-rose-50/60 dark:hover:bg-zinc-900 transition-colors cursor-pointer ${
-                                  isSelected ? "bg-rose-50 dark:bg-rose-500/15" : ""
-                                }`}
-                              >
-                                {thumbUrl ? (
-                                  <img
-                                    src={thumbUrl}
-                                    alt={movie.title}
-                                    className="w-8 h-12 rounded-md object-cover bg-slate-200 shrink-0"
-                                  />
-                                ) : (
-                                  <div className="w-8 h-12 rounded-md bg-slate-200 dark:bg-zinc-800 flex items-center justify-center text-slate-400 shrink-0">
-                                    <Film size={14} />
-                                  </div>
-                                )}
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-bold text-slate-900 dark:text-zinc-100 truncate">
-                                    {movie.isCustom ? `🎨 [Custom] ${movie.title}` : movie.title}
-                                  </p>
-                                  {movie.release_date && (
-                                    <p className="text-[10px] text-slate-500">
-                                      Año: {movie.release_date.split("-")[0]}
-                                    </p>
-                                  )}
-                                </div>
-                                {isSelected && (
-                                  <Check size={15} className="text-rose-600 shrink-0" />
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Option 2: External URL */}
-                  {imageMode === "url" && (
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">
-                        Pegar URL directa de imagen (https://...)
-                      </label>
-                      <input
-                        type="url"
-                        value={externalUrl}
-                        onChange={(e) => setExternalUrl(e.target.value)}
-                        placeholder="https://ejemplo.com/poster-pelicula.jpg"
-                        className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs font-medium text-slate-900 dark:text-zinc-100 focus:bg-white focus:outline-none"
-                      />
-                    </div>
-                  )}
-
-                  {/* Option 3: Without Image */}
-                  {imageMode === "none" && (
-                    <div className="rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 p-3 flex items-center gap-2.5 text-slate-600 dark:text-zinc-400">
-                      <ImageOff size={16} className="shrink-0 text-slate-400" />
-                      <p className="text-[11px] leading-relaxed">
-                        Este material se guardará <strong>sin imagen</strong> (solo control numérico de stock en bodega y exposición).
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Option 4 (LAST OPTION): Upload File from Device with Server Load Warning */}
-                  {imageMode === "upload" && (
-                    <div className="space-y-2.5">
-                      <div className="rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/70 p-3 flex items-start gap-2.5">
-                        <AlertTriangle
-                          size={16}
-                          className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5"
-                        />
-                        <div className="text-[11px] text-amber-900 dark:text-amber-200 leading-relaxed">
-                          <strong className="font-extrabold block mb-0.5">
-                            Última opción — Evitá sobrecargar el servidor:
-                          </strong>
-                          Por favor, verificá primero si podés encontrar la imagen usando el buscador de{" "}
-                          <strong>TMDB (Opción 1)</strong> o pegando una{" "}
-                          <strong>URL externa (Opción 2)</strong>. Usá la carga manual de archivo únicamente cuando la imagen no exista en ninguna de las opciones anteriores.
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handlePickFile}
-                        className="w-full px-3 py-2.5 rounded-xl border border-dashed border-amber-400 bg-amber-50/50 dark:bg-amber-950/20 hover:bg-amber-100/60 text-amber-800 dark:text-amber-300 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                      >
-                        <Upload size={14} />
-                        <span className="truncate">
-                          {selectedFile ? selectedFile.name : "Seleccionar imagen del dispositivo…"}
-                        </span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Right Column: Live Card Preview */}
-                <div className="md:col-span-5 flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Vista Previa del Material
-                  </span>
-                  <div className="w-44 aspect-[2/2.7] rounded-2xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 overflow-hidden flex flex-col justify-between shadow-sm relative">
-                    {modalPreviewUrl ? (
-                      <>
-                        <img
-                          src={modalPreviewUrl}
-                          alt="Vista previa"
-                          className="w-full h-full object-cover"
-                        />
-                        {imageMode !== "none" && (
+                    {/* Tab 1 Content: TMDB Search */}
+                    {imageMode === "tmdb" && (
+                      <div className="rounded-xl bg-slate-50/80 dark:bg-zinc-950 border border-slate-200/80 dark:border-zinc-800 p-3.5 space-y-3 animate-pop-in">
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <Search
+                              size={13}
+                              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                            />
+                            <input
+                              type="text"
+                              value={tmdbQuery}
+                              onChange={(e) => setTmdbQuery(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleSearchTmdb();
+                                }
+                              }}
+                              placeholder={
+                                formTitulo.trim()
+                                  ? `Buscar "${formTitulo.trim()}" en TMDB…`
+                                  : "Escribí el título de la película para buscar póster…"
+                              }
+                              className="w-full pl-8 pr-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-xs font-medium text-slate-900 dark:text-zinc-100"
+                            />
+                          </div>
                           <button
                             type="button"
-                            onClick={() => {
-                              setSelectedPosterUrl("");
-                              setExternalUrl("");
-                              setSelectedFile(null);
-                              setImageMode("none");
-                            }}
-                            title="Quitar imagen y dejar sin imagen"
-                            className="absolute top-2 right-2 px-2 py-1 rounded-lg bg-slate-950/75 hover:bg-rose-600 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                            onClick={() => handleSearchTmdb()}
+                            disabled={searchingTmdb}
+                            className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs font-bold hover:bg-rose-600 dark:hover:bg-rose-500 dark:hover:text-white transition-colors cursor-pointer shrink-0"
                           >
-                            <X size={11} />
-                            Quitar
+                            {searchingTmdb ? "Buscando…" : "Buscar en TMDB"}
                           </button>
-                        )}
-                      </>
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center">
-                        <div
-                          className={`w-11 h-11 rounded-2xl flex items-center justify-center mb-2 border ${CATEGORY_META[formCategory].badgeBg} ${CATEGORY_META[formCategory].badgeText} ${CATEGORY_META[formCategory].badgeBorder}`}
-                        >
-                          {renderCategoryIcon(formCategory, 20)}
                         </div>
-                        <span className="text-xs font-bold text-slate-700 dark:text-zinc-300 line-clamp-2">
-                          {formTitulo || "Nombre del material"}
-                        </span>
-                        <span className="text-[10px] text-slate-400 mt-1">
-                          Sin imagen asignada
-                        </span>
+
+                        {/* Quick search suggestion pill if user typed title above */}
+                        {formTitulo.trim() &&
+                          tmdbQuery.trim() !== formTitulo.trim() &&
+                          tmdbResults.length === 0 &&
+                          !searchingTmdb && (
+                            <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
+                              <span>
+                                ¿Querés buscar el póster de{" "}
+                                <strong className="text-slate-700 dark:text-zinc-300">
+                                  {formTitulo.trim()}
+                                </strong>
+                                ?
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTmdbQuery(formTitulo.trim());
+                                  handleSearchTmdb(formTitulo.trim());
+                                }}
+                                className="text-rose-600 dark:text-rose-400 font-bold hover:underline cursor-pointer"
+                              >
+                                Buscar ahora →
+                              </button>
+                            </div>
+                          )}
+
+                        {/* Thumbnail Gallery Results */}
+                        {tmdbResults.length > 0 ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
+                            {tmdbResults.map((movie) => {
+                              const thumbUrl = buildPosterDisplayUrl(movie.poster_path);
+                              const isSelected = selectedPosterUrl === thumbUrl && !!thumbUrl;
+                              return (
+                                <button
+                                  key={movie.id}
+                                  type="button"
+                                  onClick={() => handleSelectTmdbResult(movie)}
+                                  className={`group/item p-2 rounded-xl border flex items-center gap-2.5 text-left transition-all cursor-pointer ${
+                                    isSelected
+                                      ? "bg-rose-50/90 dark:bg-rose-500/15 border-rose-500 ring-1 ring-rose-500/30"
+                                      : "bg-white dark:bg-zinc-900 border-slate-200/80 dark:border-zinc-800 hover:border-slate-300"
+                                  }`}
+                                >
+                                  {thumbUrl ? (
+                                    <img
+                                      src={thumbUrl}
+                                      alt={movie.title}
+                                      className="w-9 h-13 rounded-lg object-cover bg-slate-100 shrink-0 shadow-2xs"
+                                    />
+                                  ) : (
+                                    <div className="w-9 h-13 rounded-lg bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-400 shrink-0">
+                                      <Film size={14} />
+                                    </div>
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[11px] font-bold text-slate-900 dark:text-zinc-100 line-clamp-2 leading-tight">
+                                      {movie.isCustom ? `🎨 ${movie.title}` : movie.title}
+                                    </p>
+                                    {movie.release_date && (
+                                      <p className="text-[10px] text-slate-400 mt-0.5">
+                                        {movie.release_date.split("-")[0]}
+                                      </p>
+                                    )}
+                                  </div>
+                                  {isSelected && (
+                                    <CheckCircle2
+                                      size={15}
+                                      className="text-rose-600 dark:text-rose-400 shrink-0"
+                                    />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : hasSearchedTmdb && !searchingTmdb ? (
+                          <p className="text-xs text-slate-500 text-center py-2">
+                            No se encontraron resultados en TMDB. Probá con otro nombre o usá una URL externa.
+                          </p>
+                        ) : null}
                       </div>
                     )}
 
-                    <div className="absolute bottom-2 left-2 right-2 rounded-xl bg-slate-950/85 text-white p-2 text-[10px] backdrop-blur-xs">
-                      <div className="font-extrabold truncate">
-                        {formTitulo || "Sin título"}
+                    {/* Tab 2 Content: Direct Web URL */}
+                    {imageMode === "url" && (
+                      <div className="rounded-xl bg-slate-50/80 dark:bg-zinc-950 border border-slate-200/80 dark:border-zinc-800 p-3.5 space-y-2 animate-pop-in">
+                        <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300">
+                          Enlace directo de la imagen (https://...)
+                        </label>
+                        <div className="relative">
+                          <Link2
+                            size={14}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                          />
+                          <input
+                            type="url"
+                            value={externalUrl}
+                            onChange={(e) => setExternalUrl(e.target.value)}
+                            placeholder="https://image.tmdb.org/... o URL de imagen"
+                            className="w-full pl-9 pr-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-xs font-medium text-slate-900 dark:text-zinc-100"
+                          />
+                        </div>
+                        <p className="text-[10px] text-slate-400 dark:text-zinc-500">
+                          La imagen se carga directamente desde la URL externa sin ocupar almacenamiento del servidor.
+                        </p>
                       </div>
-                      <div className="flex items-center justify-between mt-1 text-slate-300">
-                        <span>Bodega: {computedModalBodega}</span>
-                        <span className="text-emerald-400 font-bold">
-                          Expo: {parsedModalExpo}
-                        </span>
+                    )}
+
+                    {/* Tab 3 Content: Without Image */}
+                    {imageMode === "none" && (
+                      <div className="rounded-xl bg-slate-50/80 dark:bg-zinc-950 border border-slate-200/80 dark:border-zinc-800 p-4 flex items-center gap-3 text-slate-600 dark:text-zinc-400 animate-pop-in">
+                        <div className="w-9 h-9 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 flex items-center justify-center text-slate-400 shrink-0">
+                          <ImageOff size={17} />
+                        </div>
+                        <div className="text-xs leading-relaxed">
+                          <strong className="font-bold text-slate-800 dark:text-zinc-200 block">
+                            Material sin imagen asignada
+                          </strong>
+                          Se mostrará una tarjeta limpia con el ícono de{" "}
+                          <strong>{CATEGORY_META[formCategory].label}</strong> para controlar rápidamente su stock en bodega y exposición.
+                        </div>
                       </div>
-                    </div>
+                    )}
+
+                    {/* Tab 4 Content (LAST OPTION): Upload File with Server Warning */}
+                    {imageMode === "upload" && (
+                      <div className="rounded-xl bg-amber-50/60 dark:bg-amber-950/25 border border-amber-200 dark:border-amber-800/70 p-3.5 space-y-3 animate-pop-in">
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 mt-0.5">
+                            <AlertTriangle size={15} />
+                          </div>
+                          <div className="text-[11px] text-amber-950 dark:text-amber-200 leading-relaxed">
+                            <strong className="font-extrabold block">
+                              Usar solo como última opción para no sobrecargar el servidor
+                            </strong>
+                            Antes de subir un archivo propio, verificá si la imagen está disponible en{" "}
+                            <button
+                              type="button"
+                              onClick={() => setImageMode("tmdb")}
+                              className="underline font-bold cursor-pointer"
+                            >
+                              TMDB
+                            </button>{" "}
+                            o mediante una{" "}
+                            <button
+                              type="button"
+                              onClick={() => setImageMode("url")}
+                              className="underline font-bold cursor-pointer"
+                            >
+                              URL Web
+                            </button>
+                            .
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handlePickFile}
+                          className="w-full py-3 px-4 rounded-xl border-2 border-dashed border-amber-400/90 dark:border-amber-600 bg-white/90 dark:bg-zinc-900/90 hover:bg-amber-50 dark:hover:bg-zinc-900 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <Upload size={15} className="text-amber-600" />
+                          <span className="truncate">
+                            {selectedFile
+                              ? `Archivo listo: ${selectedFile.name}`
+                              : "Seleccionar imagen desde el dispositivo…"}
+                          </span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
               {formError && (
-                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs font-bold text-rose-600 dark:text-rose-300">
-                  {formError}
+                <div className="mt-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs font-bold text-rose-600 dark:text-rose-300 flex items-center gap-2">
+                  <AlertTriangle size={15} className="shrink-0" />
+                  <span>{formError}</span>
                 </div>
               )}
             </div>
 
             {/* Modal Footer */}
-            <div className="px-5 py-3.5 bg-slate-50 dark:bg-zinc-950 border-t border-slate-200/80 dark:border-zinc-800 flex items-center justify-end gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-100 cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={handleSaveMaterial}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold shadow-sm cursor-pointer"
-              >
-                <Check size={14} />
-                <span>{saving ? "Guardando…" : editingItem ? "Guardar Cambios" : "Crear Material"}</span>
-              </button>
+            <div className="px-6 py-3.5 bg-slate-50/90 dark:bg-zinc-950 border-t border-slate-200/80 dark:border-zinc-800 flex items-center justify-between gap-3 shrink-0">
+              <span className="text-[11px] text-slate-400 dark:text-zinc-500 hidden sm:inline">
+                Podés cambiar las cantidades en exposición en cualquier momento desde la tarjeta.
+              </span>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={handleSaveMaterial}
+                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-700 hover:to-rose-600 disabled:opacity-50 text-white text-xs font-bold shadow-sm shadow-rose-500/20 cursor-pointer"
+                >
+                  <Check size={14} strokeWidth={2.5} />
+                  <span>
+                    {saving
+                      ? "Guardando…"
+                      : editingItem
+                      ? "Guardar Cambios"
+                      : "Registrar Material"}
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1717,11 +2038,11 @@ export default function StockMaterialesScreen() {
       {/* Modal: Confirmar Eliminación */}
       {deleteTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/55 backdrop-blur-xs animate-backdrop-in"
           onClick={() => setDeleteTarget(null)}
         >
           <div
-            className="bg-white dark:bg-zinc-900 w-full max-w-sm rounded-2xl border border-slate-200 dark:border-zinc-800 p-5 shadow-2xl"
+            className="bg-white dark:bg-zinc-900 w-full max-w-sm rounded-2xl border border-slate-200 dark:border-zinc-800 p-5 shadow-2xl animate-modal-in"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-sm font-extrabold text-slate-900 dark:text-zinc-100">
