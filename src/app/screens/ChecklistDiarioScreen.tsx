@@ -260,22 +260,6 @@ function buildChecklistHtml(data: ChecklistDiarioDoc, cineName: string): string 
           .join("")
       : `<tr><td colspan="3" class="empty-cell">Sin datos de Barco PC.</td></tr>`;
 
-  const mtmRows =
-    data.mantenimientos?.recientes && data.mantenimientos.recientes.length > 0
-      ? data.mantenimientos.recientes
-          .slice(0, 6)
-          .map(
-            (m) => `
-          <tr>
-            <td>${escapeHtml(formatYmdShort(m.date))}</td>
-            <td><strong>Tipo ${escapeHtml(m.type)}</strong></td>
-            <td>${escapeHtml(m.performedBy)}</td>
-            <td>${escapeHtml(m.notes || "-")}</td>
-          </tr>`
-          )
-          .join("")
-      : `<tr><td colspan="4" class="empty-cell">Sin mantenimientos registrados recientemente.</td></tr>`;
-
   const lamparasHtml =
     data.lamparas?.alertas && data.lamparas.alertas.length > 0
       ? data.lamparas.alertas
@@ -589,18 +573,6 @@ function buildChecklistHtml(data: ChecklistDiarioDoc, cineName: string): string 
           </tr>
         </thead>
         <tbody>${barcoRows}</tbody>
-      </table>
-      <div class="sub-heading">Últimos Mantenimientos Registrados</div>
-      <table>
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Tipo</th>
-            <th>Realizado por</th>
-            <th>Notas</th>
-          </tr>
-        </thead>
-        <tbody>${mtmRows}</tbody>
       </table>
     </div>
 
@@ -1188,24 +1160,6 @@ export default function ChecklistDiarioScreen({ readOnly = false }: { readOnly?:
                   );
                 })}
               </View>
-
-              <Text style={[s.subSectionLabel, { marginTop: 14 }]}>Últimos Mantenimientos</Text>
-              {!currentDoc.mantenimientos?.recientes || currentDoc.mantenimientos.recientes.length === 0 ? (
-                <Text style={s.emptyText}>Sin mantenimientos registrados.</Text>
-              ) : (
-                <View style={{ gap: 6 }}>
-                  {currentDoc.mantenimientos.recientes.slice(0, 5).map((m) => (
-                    <View key={m.id} style={s.itemRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.itemTitle}>
-                          {formatYmdShort(m.date)} · Tipo {m.type} ({m.performedBy})
-                        </Text>
-                        {!!m.notes && <Text style={s.itemSub}>{m.notes}</Text>}
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              )}
             </View>
 
             {/* SECCIÓN 4: INFORMACIÓN DE LÁMPARAS */}
