@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Calendar, DateData } from "react-native-calendars";
 import dayjs from "dayjs";
 import "dayjs/locale/es";
 import * as Print from "expo-print";
@@ -624,8 +625,24 @@ export default function ChecklistDiarioScreen({ readOnly = false }: { readOnly?:
   const [showCreateDayModal, setShowCreateDayModal] = useState<boolean>(false);
   const [customDateInput, setCustomDateInput] = useState<string>(todayYmd);
 
-  // History modal
-  const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
+  // Calendar modal
+  const [showCalendarModal, setShowCalendarModal] = useState<boolean>(false);
+
+  const markedDates = useMemo(() => {
+    const marks: Record<string, any> = {};
+    for (const c of allChecklists) {
+      const f = c.fecha || c.id;
+      if (f) {
+        marks[f] = { marked: true, dotColor: "#16a34a" };
+      }
+    }
+    marks[selectedDate] = {
+      ...(marks[selectedDate] || {}),
+      selected: true,
+      selectedColor: "#dc2626",
+    };
+    return marks;
+  }, [allChecklists, selectedDate]);
 
   // Subscribe to all checklists for history navigation
   useEffect(() => {
@@ -883,93 +900,79 @@ export default function ChecklistDiarioScreen({ readOnly = false }: { readOnly?:
       <ScrollView contentContainerStyle={[s.scrollContent, isMobile && s.scrollContentMobile]}>
         {/* Header & Date Controls */}
         <View style={s.headerCard}>
-          <View style={s.headerTopRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.title}>Checklist Diario de Proyección</Text>
-              <Text style={s.subtitle}>
-                Reporte diario automático (06:00 AM) con eventos, RMA, mantenimientos, lámparas y novedades del turno.
-              </Text>
-            </View>
+          {/* Centered Date navigator */}
+          <View style={s.dateNavCentered}>
+            <TouchableOpacity style={s.iconBtn} onPress={() => shiftDate(-1)}>
+              <MaterialCommunityIcons name="chevron-left" size={22} color="#0f172a" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={s.dateBadge}
+              onPress={() => setShowCalendarModal(true)}
+              activeOpacity={0.75}
+            >
+              <MaterialCommunityIcons name="calendar" size={16} color="#dc2626" />
+              <Text style={s.dateText}>{formatYmdShort(selectedDate)}</Text>
+              {selectedDate === todayYmd && (
+                <View style={s.todayTag}>
+                  <Text style={s.todayTagText}>HOY</Text>
+                </View>
+              )}
+              <MaterialCommunityIcons name="chevron-down" size={16} color="#64748b" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={s.iconBtn} onPress={() => shiftDate(1)}>
+              <MaterialCommunityIcons name="chevron-right" size={22} color="#0f172a" />
+            </TouchableOpacity>
+
+            {selectedDate !== todayYmd && (
+              <TouchableOpacity style={s.secondaryBtn} onPress={() => setSelectedDate(todayYmd)}>
+                <Text style={s.secondaryBtnText}>Ir a Hoy</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
-          <View style={[s.controlsRow, isMobile && s.controlsRowMobile]}>
-            {/* Date navigator */}
-            <View style={s.dateNavGroup}>
-              <TouchableOpacity style={s.iconBtn} onPress={() => shiftDate(-1)}>
-                <MaterialCommunityIcons name="chevron-left" size={20} color="#0f172a" />
-              </TouchableOpacity>
+          {/* Action buttons */}
+          <View style={s.actionBtnsCentered}>
+            <TouchableOpacity
+              style={s.secondaryBtn}
+              onPress={() => {
+                setCustomDateInput(selectedDate);
+                setShowCreateDayModal(true);
+              }}
+            >
+              <MaterialCommunityIcons name="calendar-plus" size={16} color="#334155" />
+              <Text style={s.secondaryBtnText}>Crear día</Text>
+            </TouchableOpacity>
 
-              <View style={s.dateBadge}>
-                <MaterialCommunityIcons name="calendar" size={16} color="#dc2626" />
-                <Text style={s.dateText}>{formatYmdShort(selectedDate)}</Text>
-                {selectedDate === todayYmd && (
-                  <View style={s.todayTag}>
-                    <Text style={s.todayTagText}>HOY</Text>
-                  </View>
-                )}
-              </View>
-
-              <TouchableOpacity style={s.iconBtn} onPress={() => shiftDate(1)}>
-                <MaterialCommunityIcons name="chevron-right" size={20} color="#0f172a" />
-              </TouchableOpacity>
-
-              {selectedDate !== todayYmd && (
-                <TouchableOpacity style={s.secondaryBtn} onPress={() => setSelectedDate(todayYmd)}>
-                  <Text style={s.secondaryBtnText}>Ir a Hoy</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Action buttons */}
-            <View style={s.actionBtnsGroup}>
-              <TouchableOpacity
-                style={s.secondaryBtn}
-                onPress={() => setShowHistoryModal(true)}
-              >
-                <MaterialCommunityIcons name="history" size={16} color="#334155" />
-                <Text style={s.secondaryBtnText}>Historial ({allChecklists.length})</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={s.secondaryBtn}
-                onPress={() => {
-                  setCustomDateInput(selectedDate);
-                  setShowCreateDayModal(true);
-                }}
-              >
-                <MaterialCommunityIcons name="calendar-plus" size={16} color="#334155" />
-                <Text style={s.secondaryBtnText}>Crear día</Text>
-              </TouchableOpacity>
-
-              {currentDoc && (
-                <>
-                  <TouchableOpacity
-                    style={[s.primaryOutlineBtn, syncingAuto && { opacity: 0.6 }]}
-                    disabled={syncingAuto}
-                    onPress={() => callServerGenerate(selectedDate)}
-                  >
-                    {syncingAuto ? (
-                      <ActivityIndicator size="small" color="#dc2626" />
-                    ) : (
-                      <MaterialCommunityIcons name="refresh" size={16} color="#dc2626" />
-                    )}
-                    <Text style={s.primaryOutlineBtnText}>Actualizar info automática</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={s.primaryBtn} onPress={handlePrintOrOpenHtml}>
-                    <MaterialCommunityIcons name="file-document-outline" size={16} color="#fff" />
-                    <Text style={s.primaryBtnText}>Ver / Imprimir HTML</Text>
-                  </TouchableOpacity>
-
-                  {Platform.OS === "web" && (
-                    <TouchableOpacity style={s.darkBtn} onPress={handleDownloadHtml}>
-                      <MaterialCommunityIcons name="download" size={16} color="#fff" />
-                      <Text style={s.darkBtnText}>Descargar HTML</Text>
-                    </TouchableOpacity>
+            {currentDoc && (
+              <>
+                <TouchableOpacity
+                  style={[s.primaryOutlineBtn, syncingAuto && { opacity: 0.6 }]}
+                  disabled={syncingAuto}
+                  onPress={() => callServerGenerate(selectedDate)}
+                >
+                  {syncingAuto ? (
+                    <ActivityIndicator size="small" color="#dc2626" />
+                  ) : (
+                    <MaterialCommunityIcons name="refresh" size={16} color="#dc2626" />
                   )}
-                </>
-              )}
-            </View>
+                  <Text style={s.primaryOutlineBtnText}>Actualizar info automática</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={s.primaryBtn} onPress={handlePrintOrOpenHtml}>
+                  <MaterialCommunityIcons name="file-document-outline" size={16} color="#fff" />
+                  <Text style={s.primaryBtnText}>Ver / Imprimir HTML</Text>
+                </TouchableOpacity>
+
+                {Platform.OS === "web" && (
+                  <TouchableOpacity style={s.darkBtn} onPress={handleDownloadHtml}>
+                    <MaterialCommunityIcons name="download" size={16} color="#fff" />
+                    <Text style={s.darkBtnText}>Descargar HTML</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
           </View>
         </View>
 
@@ -1356,51 +1359,37 @@ export default function ChecklistDiarioScreen({ readOnly = false }: { readOnly?:
         </Pressable>
       </Modal>
 
-      {/* Modal: Historial de Checklists */}
+      {/* Modal: Calendario para elegir día */}
       <Modal
-        visible={showHistoryModal}
+        visible={showCalendarModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowHistoryModal(false)}
+        onRequestClose={() => setShowCalendarModal(false)}
       >
-        <Pressable style={s.modalBackdrop} onPress={() => setShowHistoryModal(false)}>
-          <Pressable style={[s.modalCard, { maxHeight: "80%" }]} onPress={() => {}}>
-            <Text style={s.modalTitle}>Historial de Checklists Guardados</Text>
-            <ScrollView style={{ marginTop: 10 }}>
-              {allChecklists.length === 0 ? (
-                <Text style={s.emptyText}>Aún no hay checklists guardados.</Text>
-              ) : (
-                <View style={{ gap: 8 }}>
-                  {allChecklists.map((c) => {
-                    const f = c.fecha || c.id;
-                    const isSel = f === selectedDate;
-                    return (
-                      <TouchableOpacity
-                        key={c.id}
-                        style={[s.historyItem, isSel && s.historyItemActive]}
-                        onPress={() => {
-                          setSelectedDate(f);
-                          setShowHistoryModal(false);
-                        }}
-                      >
-                        <View>
-                          <Text style={s.itemTitle}>{formatYmdShort(f)}</Text>
-                          <Text style={s.itemSub}>
-                            Responsable: {c.responsable?.trim() || "Sin asignar"} · Novedades:{" "}
-                            {Array.isArray(c.novedades) ? c.novedades.length : 0}
-                          </Text>
-                        </View>
-                        <MaterialCommunityIcons name="chevron-right" size={20} color="#64748b" />
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
-            </ScrollView>
+        <Pressable style={s.modalBackdrop} onPress={() => setShowCalendarModal(false)}>
+          <Pressable style={s.modalCard} onPress={() => {}}>
+            <Text style={[s.modalTitle, { marginBottom: 10 }]}>Seleccionar Fecha</Text>
+            <Calendar
+              current={selectedDate}
+              markedDates={markedDates}
+              onDayPress={(day: DateData) => {
+                setSelectedDate(day.dateString);
+                setShowCalendarModal(false);
+              }}
+            />
             <View style={s.modalActions}>
               <TouchableOpacity
                 style={s.secondaryBtn}
-                onPress={() => setShowHistoryModal(false)}
+                onPress={() => {
+                  setSelectedDate(todayYmd);
+                  setShowCalendarModal(false);
+                }}
+              >
+                <Text style={s.secondaryBtnText}>Hoy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.secondaryBtn}
+                onPress={() => setShowCalendarModal(false)}
               >
                 <Text style={s.secondaryBtnText}>Cerrar</Text>
               </TouchableOpacity>
@@ -1435,37 +1424,19 @@ const s = StyleSheet.create({
     padding: 16,
     gap: 14,
   },
-  headerTopRow: {
+  dateNavCentered: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
+    gap: 8,
+    flexWrap: "wrap",
   },
-  title: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#0f172a",
-  },
-  subtitle: {
-    fontSize: 13,
-    color: "#64748b",
-    marginTop: 2,
-  },
-  controlsRow: {
+  actionBtnsCentered: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  controlsRowMobile: {
-    flexDirection: "column",
-    alignItems: "stretch",
-  },
-  dateNavGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
   },
   dateBadge: {
     flexDirection: "row",
