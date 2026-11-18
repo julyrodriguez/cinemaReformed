@@ -57,6 +57,7 @@ import LamparasScreen from "./screens/LamparasScreen";
 import CierreMesScreen from "./screens/CierreMesScreen";
 import ControlParlantesScreen from "./screens/ControlParlantesScreen";
 import MantenimientosScreen from "./screens/MantenimientosScreen";
+import ChecklistDiarioScreen from "./screens/ChecklistDiarioScreen";
 import ProgramacionProyeccionScreen from "./screens/ProgramacionProyeccionScreen";
 import ControlSalasScreen from "./screens/ControlSalasScreen";
 import MapaBannersScreen from "./screens/MapaBannersScreen";
@@ -85,7 +86,8 @@ type ProyeccionTab =
   | "CONTROL_SEMANAL"
   | "LAMPARAS"
   | "CIERRE_MES"
-  | "CONTROL_PARLANTES";
+  | "CONTROL_PARLANTES"
+  | "CHECKLIST_DIARIO";
 
 type MarketingSubTab =
   | "MKT"
@@ -115,6 +117,7 @@ const MAIN_TAB_META = {
 
 const SUB_TABS = {
   PROYECCIÓN: [
+    { key: "CHECKLIST_DIARIO", label: "Checklist Diario", icon: "format-list-checks" },
     { key: "LAMPARAS", label: "Lámparas", icon: "lightbulb-on-outline" },
     { key: "DCP", label: "DCP", icon: "disc" },
     { key: "CREDITOS", label: "Créditos", icon: "lightbulb-outline" },
@@ -942,6 +945,9 @@ export default function Home() {
             )}
             {proyeccionTab === "CONTROL_PARLANTES" && (
               <ControlParlantesScreen readOnly={!isProjectionUnlocked} />
+            )}
+            {proyeccionTab === "CHECKLIST_DIARIO" && (
+              <ChecklistDiarioScreen readOnly={!isProjectionUnlocked} />
             )}
           </View>
         </View>
