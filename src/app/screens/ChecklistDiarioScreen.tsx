@@ -25,7 +25,6 @@ import {
 import { auth, CINES_COLLECTION, db } from "@/lib/firebaseConfig";
 import { useAuthUser } from "@/lib/useAuthUser";
 import { useAppLayout } from "@/lib/useAppLayout";
-import { THEME } from "@/lib/theme";
 import SEOHead from "@/components/SEOHead";
 
 dayjs.locale("es");
@@ -138,22 +137,53 @@ function escapeHtml(text: string | number | null | undefined): string {
     .replace(/'/g, "&#39;");
 }
 
-function formatYmdShort(ymd: string): string {
+function toSafeDate(val: any): Date | null {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  if (typeof val?.toDate === "function") {
+    const d = val.toDate();
+    return d instanceof Date && !isNaN(d.getTime()) ? d : null;
+  }
+  if (typeof val === "object" && typeof val.seconds === "number") {
+    return new Date(val.seconds * 1000);
+  }
+  if (typeof val === "object" && typeof val._seconds === "number") {
+    return new Date(val._seconds * 1000);
+  }
+  if (typeof val === "string" || typeof val === "number") {
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+function formatYmdShort(ymd: any): string {
   if (!ymd) return "-";
+  if (typeof ymd !== "string") {
+    const dt = toSafeDate(ymd);
+    return dt ? dayjs(dt).format("DD/MM/YYYY") : "-";
+  }
   const d = dayjs(ymd);
   return d.isValid() ? d.format("DD/MM/YYYY") : ymd;
 }
 
-function formatYmdLong(ymd: string): string {
+function formatYmdLong(ymd: any): string {
   if (!ymd) return "-";
+  if (typeof ymd !== "string") {
+    const dt = toSafeDate(ymd);
+    return dt ? dayjs(dt).format("dddd D [de] MMMM [de] YYYY") : "-";
+  }
   const d = dayjs(ymd);
   return d.isValid() ? d.format("dddd D [de] MMMM [de] YYYY") : ymd;
 }
 
-function formatIsoDateTime(iso?: string | null): string {
+function formatIsoDateTime(iso?: any): string {
   if (!iso) return "-";
-  const d = dayjs(iso);
-  return d.isValid() ? d.format("DD/MM/YYYY HH:mm") : iso;
+  const dt = toSafeDate(iso);
+  if (dt) {
+    return dayjs(dt).format("DD/MM/YYYY HH:mm");
+  }
+  return typeof iso === "string" ? iso : "-";
 }
 
 function buildChecklistHtml(data: ChecklistDiarioDoc, cineName: string): string {
@@ -1231,7 +1261,7 @@ export default function ChecklistDiarioScreen({ readOnly = false }: { readOnly?:
                       </Text>
 
                       <View style={s.windowGrid}>
-                        {al.ventanaCambio.map((v) => (
+                        {(al.ventanaCambio || []).map((v) => (
                           <View
                             key={v.posicion}
                             style={[s.windowCell, v.esExacta && s.windowCellExact]}
@@ -1527,7 +1557,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: THEME?.colors?.primary || "#dc2626",
+    backgroundColor: "#dc2626",
     paddingHorizontal: 12,
     paddingVertical: 9,
     borderRadius: 8,
