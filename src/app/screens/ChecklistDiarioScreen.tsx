@@ -187,6 +187,29 @@ function formatIsoDateTime(iso?: any): string {
   return typeof iso === "string" ? iso : "-";
 }
 
+function dedupeRmaList(list: ChecklistRma[] = []): ChecklistRma[] {
+  const sorted = [...list].sort((a, b) => {
+    const ta = toSafeDate(a.createdAt)?.getTime() ?? 0;
+    const tb = toSafeDate(b.createdAt)?.getTime() ?? 0;
+    return tb - ta;
+  });
+  const seen = new Set<string>();
+  const result: ChecklistRma[] = [];
+  for (const r of sorted) {
+    const rma = (r.rmaNumber || "").trim();
+    const inc = (r.incidentNumber || "").trim();
+    const key =
+      (rma ? `rma:${rma.toUpperCase()}` : "") ||
+      (inc ? `inc:${inc.toUpperCase()}` : "") ||
+      `id:${r.id}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(r);
+    }
+  }
+  return result;
+}
+
 function buildChecklistHtml(data: ChecklistDiarioDoc, cineName: string): string {
   const fechaFormateada = formatYmdLong(data.fecha);
   const responsableText = data.responsable?.trim() || "Sin asignar";
@@ -219,9 +242,10 @@ function buildChecklistHtml(data: ChecklistDiarioDoc, cineName: string): string 
           .join("")
       : `<tr><td colspan="6" class="empty-cell">No hay eventos ni programaciones para esta fecha o próximos.</td></tr>`;
 
+  const uniqueRma = dedupeRmaList(data.rma || []);
   const rmaRows =
-    data.rma && data.rma.length > 0
-      ? data.rma
+    uniqueRma.length > 0
+      ? uniqueRma
           .map(
             (r) => `
           <tr>
@@ -1107,7 +1131,7 @@ export default function ChecklistDiarioScreen({ readOnly = false }: { readOnly?:
                 <Text style={s.emptyText}>Sin registros de RMA activos.</Text>
               ) : (
                 <View style={{ gap: 8 }}>
-                  {currentDoc.rma.map((r) => (
+                  {dedupeRmaList(currentDoc.rma).map((r) => (
                     <View key={r.id} style={s.itemRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={s.itemTitle}>
